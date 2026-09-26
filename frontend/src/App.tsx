@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+
 import {
   Navigate,
   Route,
   Routes,
 } from "react-router-dom";
+
 import type { Session } from "@supabase/supabase-js";
 
 import { supabase } from "./lib/supabase";
@@ -33,12 +35,55 @@ import AdminEquipe from "./pages/AdminEquipe";
 import Sidebar from "./components/layout/Sidebar";
 
 function ProtectedLayout() {
+  const [sidebarCollapsed, setSidebarCollapsed] =
+    useState(false);
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Sidebar />
+      {/* ===================================================== */}
+      {/* SIDEBAR                                               */}
+      {/* ===================================================== */}
 
-      <main className="min-h-screen md:ml-64">
-        <div className="p-6 md:p-8">
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggle={() =>
+          setSidebarCollapsed((current) => !current)
+        }
+      />
+
+      {/* ===================================================== */}
+      {/* CONTENU PRINCIPAL                                     */}
+      {/* ===================================================== */}
+
+      <main
+        className={[
+          "min-h-screen transition-all duration-300",
+          sidebarCollapsed
+            ? "md:ml-20"
+            : "md:ml-72",
+        ].join(" ")}
+      >
+        {/* =================================================== */}
+        {/* HEADER MOBILE                                       */}
+        {/* =================================================== */}
+
+        <header className="flex h-16 items-center border-b border-slate-800/80 bg-slate-950/95 px-4 backdrop-blur-xl md:hidden">
+          <div className="pl-12">
+            <div className="text-sm font-bold tracking-wide text-white">
+              NEXUS
+            </div>
+
+            <div className="text-[9px] font-medium uppercase tracking-[0.2em] text-blue-400">
+              ERP System
+            </div>
+          </div>
+        </header>
+
+        {/* =================================================== */}
+        {/* PAGES                                               */}
+        {/* =================================================== */}
+
+        <div className="p-4 sm:p-5 md:p-8">
           <Routes>
             <Route
               path="/dashboard"
@@ -135,9 +180,13 @@ export default function App() {
     };
   }, []);
 
+  {/* ======================================================= */}
+  {/* CHARGEMENT                                              */}
+  {/* ======================================================= */}
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
         <div className="text-center">
           <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-blue-500" />
 
@@ -151,9 +200,9 @@ export default function App() {
 
   return (
     <Routes>
-      {/* =========================
-          PAGES PUBLIQUES
-      ========================== */}
+      {/* ===================================================== */}
+      {/* PAGES PUBLIQUES                                      */}
+      {/* ===================================================== */}
 
       <Route
         path="/"
@@ -184,10 +233,9 @@ export default function App() {
         }
       />
 
-      {/* =========================
-          ADMINISTRATION
-          Aucun lien public
-      ========================== */}
+      {/* ===================================================== */}
+      {/* ADMINISTRATION                                       */}
+      {/* ===================================================== */}
 
       <Route
         path="/admin"
@@ -202,14 +250,24 @@ export default function App() {
           )
         }
       />
-      <Route 
-        path="/admin/utilisateurs" 
-        element={<Utilisateurs />} 
+
+      <Route
+        path="/admin/utilisateurs"
+        element={
+          session ? (
+            <Utilisateurs />
+          ) : (
+            <Navigate
+              to="/login"
+              replace
+            />
+          )
+        }
       />
 
-      {/* =========================
-          ESPACE CONNECTÉ
-      ========================== */}
+      {/* ===================================================== */}
+      {/* ESPACE CONNECTÉ                                      */}
+      {/* ===================================================== */}
 
       {session ? (
         <Route
@@ -228,9 +286,9 @@ export default function App() {
         />
       )}
 
-      {/* =========================
-          404
-      ========================== */}
+      {/* ===================================================== */}
+      {/* 404                                                   */}
+      {/* ===================================================== */}
 
       <Route
         path="*"
