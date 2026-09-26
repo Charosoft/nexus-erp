@@ -128,8 +128,8 @@ export default function Home() {
                 NEXUS
               </div>
 
-              <div className="text-[9px] uppercase tracking-[0.25em] text-blue-400">
-                Integrated ERP
+              <div className="text-[9px] uppercase tracking-[0.40em] text-blue-400">
+                Master 1 Administration des Réseaux
               </div>
             </div>
           </button>
