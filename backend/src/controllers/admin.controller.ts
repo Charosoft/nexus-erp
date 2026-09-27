@@ -1,7 +1,11 @@
 import { Request, Response } from "express";
+
 import { supabase } from "../config/supabase.js";
 
-export const createUser = async (req: Request, res: Response) => {
+export const createUser = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const {
       email,
@@ -16,38 +20,49 @@ export const createUser = async (req: Request, res: Response) => {
     if (!email || !password || !nom_complet) {
       return res.status(400).json({
         success: false,
-        message: "Email, mot de passe et nom complet sont obligatoires.",
+        message:
+          "Email, mot de passe et nom complet sont obligatoires.",
       });
     }
 
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
-        message: "Le mot de passe doit contenir au moins 6 caractères.",
+        message:
+          "Le mot de passe doit contenir au moins 6 caractères.",
       });
     }
 
     // Vérifier si l'email existe déjà
-    const { data: usersData, error: usersError } =
-      await supabase.auth.admin.listUsers();
+    const {
+      data: usersData,
+      error: usersError,
+    } = await supabase.auth.admin.listUsers();
 
     if (usersError) {
       throw new Error(usersError.message);
     }
 
-    const existingUser = usersData.users.find(
-      (user) => user.email?.toLowerCase() === email.toLowerCase()
-    );
+    const existingUser =
+      usersData.users.find(
+        (user) =>
+          user.email?.toLowerCase() ===
+          email.toLowerCase()
+      );
 
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        message: "Un utilisateur avec cet email existe déjà.",
+        message:
+          "Un utilisateur avec cet email existe déjà.",
       });
     }
 
     // Créer le compte Auth
-    const { data: authData, error: authError } =
+    const {
+      data: authData,
+      error: authError,
+    } =
       await supabase.auth.admin.createUser({
         email,
         password,
@@ -56,32 +71,45 @@ export const createUser = async (req: Request, res: Response) => {
 
     if (authError || !authData.user) {
       throw new Error(
-        authError?.message || "Impossible de créer le compte."
+        authError?.message ||
+          "Impossible de créer le compte."
       );
     }
 
     const userId = authData.user.id;
 
     // Créer le profil
-    const { error: profilError } = await supabase
-      .from("profils")
-      .insert({
-        id: userId,
-        nom_complet: nom_complet.trim(),
-        telephone: telephone?.trim() || null,
-        fonction: fonction?.trim() || null,
-        module: module?.trim() || null,
-      });
+    const { error: profilError } =
+      await supabase
+        .from("profils")
+        .insert({
+          id: userId,
+          nom_complet:
+            nom_complet.trim(),
+          telephone:
+            telephone?.trim() || null,
+          fonction:
+            fonction?.trim() || null,
+          module:
+            module?.trim() || null,
+        });
 
     if (profilError) {
       // Nettoyage du compte Auth si le profil échoue
-      await supabase.auth.admin.deleteUser(userId);
-      throw new Error(profilError.message);
+      await supabase.auth.admin.deleteUser(
+        userId
+      );
+
+      throw new Error(
+        profilError.message
+      );
     }
 
     // Si demandé, ajouter comme administrateur
     if (is_admin === true) {
-      const { error: adminError } = await supabase
+      const {
+        error: adminError,
+      } = await supabase
         .from("equipe_admins")
         .insert({
           user_id: userId,
@@ -89,10 +117,18 @@ export const createUser = async (req: Request, res: Response) => {
 
       if (adminError) {
         // Nettoyage complet
-        await supabase.from("profils").delete().eq("id", userId);
-        await supabase.auth.admin.deleteUser(userId);
+        await supabase
+          .from("profils")
+          .delete()
+          .eq("id", userId);
 
-        throw new Error(adminError.message);
+        await supabase.auth.admin.deleteUser(
+          userId
+        );
+
+        throw new Error(
+          adminError.message
+        );
       }
     }
 
@@ -112,7 +148,10 @@ export const createUser = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Erreur création utilisateur :", error);
+    console.error(
+      "Erreur création utilisateur :",
+      error
+    );
 
     return res.status(500).json({
       success: false,
@@ -123,48 +162,70 @@ export const createUser = async (req: Request, res: Response) => {
     });
   }
 };
-export const deleteUser = async (req: Request, res: Response) => {
+
+export const deleteUser = async (
+  req: Request,
+  res: Response
+) => {
   try {
-    const userId = String(req.params.id);
+    const userId = String(
+      req.params.id
+    );
 
     if (!userId) {
       return res.status(400).json({
         success: false,
-        message: "ID utilisateur manquant.",
+        message:
+          "ID utilisateur manquant.",
       });
     }
 
-    const { error: profileError } = await supabase
-      .from("profils")
-      .delete()
-      .eq("id", userId);
+    const { error: profileError } =
+      await supabase
+        .from("profils")
+        .delete()
+        .eq("id", userId);
 
     if (profileError) {
-      throw new Error(profileError.message);
+      throw new Error(
+        profileError.message
+      );
     }
 
-    const { error: adminError } = await supabase
-      .from("equipe_admins")
-      .delete()
-      .eq("user_id", userId);
+    const { error: adminError } =
+      await supabase
+        .from("equipe_admins")
+        .delete()
+        .eq("user_id", userId);
 
     if (adminError) {
-      console.error("Erreur suppression admin :", adminError.message);
+      console.error(
+        "Erreur suppression admin :",
+        adminError.message
+      );
     }
 
     const { error: authError } =
-      await supabase.auth.admin.deleteUser(userId);
+      await supabase.auth.admin.deleteUser(
+        userId
+      );
 
     if (authError) {
-      throw new Error(authError.message);
+      throw new Error(
+        authError.message
+      );
     }
 
     return res.json({
       success: true,
-      message: "Utilisateur supprimé avec succès.",
+      message:
+        "Utilisateur supprimé avec succès.",
     });
   } catch (error) {
-    console.error("Erreur suppression utilisateur :", error);
+    console.error(
+      "Erreur suppression utilisateur :",
+      error
+    );
 
     return res.status(500).json({
       success: false,
@@ -175,61 +236,160 @@ export const deleteUser = async (req: Request, res: Response) => {
     });
   }
 };
+
 export async function listAllActivites(
   req: Request,
   res: Response
 ) {
   try {
-    const authorization = req.headers.authorization;
+    const authorization =
+      req.headers.authorization;
 
-    if (!authorization?.startsWith("Bearer ")) {
+    if (
+      !authorization?.startsWith(
+        "Bearer "
+      )
+    ) {
       return res.status(401).json({
         success: false,
-        message: "Authentification requise.",
+        message:
+          "Authentification requise.",
       });
     }
 
-    const token = authorization.replace("Bearer ", "");
+    const token =
+      authorization.replace(
+        "Bearer ",
+        ""
+      );
 
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(token);
+    } =
+      await supabase.auth.getUser(token);
 
     if (authError || !user) {
       return res.status(401).json({
         success: false,
-        message: "Session invalide.",
+        message:
+          "Session invalide.",
       });
     }
 
-    const { data: admin, error: adminError } =
-      await supabase
-        .from("equipe_admins")
-        .select("user_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+    // Vérifier que l'utilisateur est administrateur
+    const {
+      data: admin,
+      error: adminError,
+    } = await supabase
+      .from("equipe_admins")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
     if (adminError || !admin) {
       return res.status(403).json({
         success: false,
-        message: "Accès administrateur requis.",
+        message:
+          "Accès administrateur requis.",
       });
     }
 
-    const { data, error } = await supabase
+    // Récupérer les activités
+    const {
+      data: activites,
+      error,
+    } = await supabase
       .from("activites")
       .select("*")
-      .order("created_at", { ascending: false })
+      .order("created_at", {
+        ascending: false,
+      })
       .limit(500);
 
     if (error) {
-      throw new Error(error.message);
+      throw new Error(
+        error.message
+      );
     }
+
+    const activitesData =
+      activites ?? [];
+
+    // Récupérer les utilisateurs concernés
+    const userIds = [
+      ...new Set(
+        activitesData
+          .map(
+            (activite) =>
+              activite.user_id
+          )
+          .filter(
+            (
+              userId
+            ): userId is string =>
+              Boolean(userId)
+          )
+      ),
+    ];
+
+    let profilsMap =
+      new Map<
+        string,
+        string | null
+      >();
+
+    if (userIds.length > 0) {
+      const {
+        data: profils,
+        error: profilsError,
+      } = await supabase
+        .from("profils")
+        .select(
+          "id, nom_complet"
+        )
+        .in(
+          "id",
+          userIds
+        );
+
+      if (profilsError) {
+        console.error(
+          "Erreur récupération profils activités :",
+          profilsError
+        );
+      } else {
+        profilsMap =
+          new Map(
+            (profils ?? []).map(
+              (profil) => [
+                profil.id,
+                profil.nom_complet,
+              ]
+            )
+          );
+      }
+    }
+
+    // Ajouter le nom du compte à chaque activité
+    const activitesEnrichies =
+      activitesData.map(
+        (activite) => ({
+          ...activite,
+
+          user_name:
+            activite.user_id
+              ? profilsMap.get(
+                  activite.user_id
+                ) ??
+                "Utilisateur"
+              : "Système",
+        })
+      );
 
     return res.json({
       success: true,
-      data: data ?? [],
+      data: activitesEnrichies,
     });
   } catch (error) {
     console.error(
