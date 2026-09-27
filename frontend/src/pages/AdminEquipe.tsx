@@ -741,9 +741,9 @@ export default function AdminEquipe() {
                           </p>
                         )}
 
-                        <p className="mt-2 break-all text-xs text-slate-600">
+                        <p className="mt-2 text-xs text-slate-600">
                           Utilisateur :{" "}
-                          {activite.user_id ||
+                          {activite.user_name ||
                             "Système"}
                         </p>
                       </div>

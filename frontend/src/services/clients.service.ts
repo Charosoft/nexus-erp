@@ -10,6 +10,20 @@ export type Client = {
   updated_at: string;
 };
 
+export type CreateClientInput = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+};
+
+export type UpdateClientInput = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+};
+
 type ClientsResponse = {
   success: boolean;
   data: Client[];
@@ -22,18 +36,25 @@ type ClientResponse = {
   message?: string;
 };
 
-export type CreateClientInput = {
-  name: string;
-  email?: string | null;
-  phone?: string | null;
-  address?: string | null;
+type DeleteClientResponse = {
+  success: boolean;
+  message?: string;
 };
-
-export type UpdateClientInput = CreateClientInput;
 
 export async function getClients(): Promise<Client[]> {
   const response =
     await api.get<ClientsResponse>("/clients");
+
+  return response.data;
+}
+
+export async function getClient(
+  id: string
+): Promise<Client> {
+  const response =
+    await api.get<ClientResponse>(
+      `/clients/${id}`
+    );
 
   return response.data;
 }
@@ -66,7 +87,7 @@ export async function updateClient(
 export async function deleteClient(
   id: string
 ): Promise<void> {
-  await api.delete(
+  await api.delete<DeleteClientResponse>(
     `/clients/${id}`
   );
 }
