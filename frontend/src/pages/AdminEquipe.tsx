@@ -15,9 +15,15 @@ import {
   ShoppingCart,
   Wallet,
   UserRound,
+  Activity,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+
+import {
+  getAllActivitesAdmin,
+  type Activite,
+} from "../services/activites.service";
 
 type Membre = {
   id: string;
@@ -50,11 +56,17 @@ export default function AdminEquipe() {
   const navigate = useNavigate();
 
   const [membres, setMembres] = useState<Membre[]>([]);
+  const [activites, setActivites] = useState<Activite[]>([]);
+
   const [loading, setLoading] = useState(true);
+  const [loadingActivites, setLoadingActivites] =
+    useState(false);
+
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
 
   const [nom, setNom] = useState("");
   const [module, setModule] = useState(modules[0]);
@@ -78,6 +90,23 @@ export default function AdminEquipe() {
 
     if (!error && data) {
       setMembres(data);
+    }
+  };
+
+  const loadActivites = async () => {
+    try {
+      setLoadingActivites(true);
+
+      const data = await getAllActivitesAdmin();
+
+      setActivites(data);
+    } catch (error) {
+      console.error(
+        "Erreur chargement activités admin :",
+        error
+      );
+    } finally {
+      setLoadingActivites(false);
     }
   };
 
@@ -107,7 +136,12 @@ export default function AdminEquipe() {
       }
 
       setIsAdmin(true);
-      await loadMembers();
+
+      await Promise.all([
+        loadMembers(),
+        loadActivites(),
+      ]);
+
       setLoading(false);
     };
 
@@ -116,11 +150,18 @@ export default function AdminEquipe() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadMembers();
+
+    await Promise.all([
+      loadMembers(),
+      loadActivites(),
+    ]);
+
     setRefreshing(false);
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (
+    event: React.FormEvent
+  ) => {
     event.preventDefault();
 
     if (!nom.trim()) {
@@ -227,7 +268,10 @@ export default function AdminEquipe() {
       <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-white">
         <div className="w-full max-w-md rounded-2xl border border-red-500/20 bg-slate-900 p-8 text-center shadow-2xl shadow-black/20">
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/10">
-            <Shield size={28} className="text-red-400" />
+            <Shield
+              size={28}
+              className="text-red-400"
+            />
           </div>
 
           <p className="text-sm font-medium text-red-400">
@@ -239,8 +283,8 @@ export default function AdminEquipe() {
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-slate-400">
-            Vous n'avez pas les droits administrateur nécessaires
-            pour accéder à cette section.
+            Vous n'avez pas les droits administrateur
+            nécessaires pour accéder à cette section.
           </p>
 
           <button
@@ -291,8 +335,8 @@ export default function AdminEquipe() {
             </div>
 
             <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">
-              Gérez les membres responsables des différents modules
-              du projet NEXUS ERP.
+              Gérez les membres responsables des différents
+              modules du projet NEXUS ERP.
             </p>
           </div>
 
@@ -304,13 +348,17 @@ export default function AdminEquipe() {
             >
               <RefreshCw
                 size={17}
-                className={refreshing ? "animate-spin" : ""}
+                className={
+                  refreshing ? "animate-spin" : ""
+                }
               />
               Actualiser
             </button>
 
             <button
-              onClick={() => navigate("/admin/utilisateurs")}
+              onClick={() =>
+                navigate("/admin/utilisateurs")
+              }
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-400 transition hover:bg-blue-500/20"
             >
               <Shield size={17} />
@@ -353,7 +401,9 @@ export default function AdminEquipe() {
                 <p className="mt-1 text-2xl font-bold text-white">
                   {
                     new Set(
-                      membres.map((membre) => membre.module)
+                      membres.map(
+                        (membre) => membre.module
+                      )
                     ).size
                   }
                   <span className="ml-1 text-sm font-medium text-slate-500">
@@ -428,7 +478,9 @@ export default function AdminEquipe() {
 
                   <input
                     value={nom}
-                    onChange={(e) => setNom(e.target.value)}
+                    onChange={(e) =>
+                      setNom(e.target.value)
+                    }
                     placeholder="Ex. Jean Kabila"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
                   />
@@ -442,11 +494,16 @@ export default function AdminEquipe() {
 
                 <select
                   value={module}
-                  onChange={(e) => setModule(e.target.value)}
+                  onChange={(e) =>
+                    setModule(e.target.value)
+                  }
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
                 >
                   {modules.map((item) => (
-                    <option key={item} value={item}>
+                    <option
+                      key={item}
+                      value={item}
+                    >
                       {item}
                     </option>
                   ))}
@@ -460,7 +517,9 @@ export default function AdminEquipe() {
 
                 <input
                   value={role}
-                  onChange={(e) => setRole(e.target.value)}
+                  onChange={(e) =>
+                    setRole(e.target.value)
+                  }
                   placeholder="Développeur"
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
                 />
@@ -541,7 +600,8 @@ export default function AdminEquipe() {
                 <div className="space-y-3">
                   {membres.map((membre) => {
                     const ModuleIcon =
-                      moduleIcons[membre.module] || Users;
+                      moduleIcons[membre.module] ||
+                      Users;
 
                     return (
                       <div
@@ -566,7 +626,8 @@ export default function AdminEquipe() {
                               </div>
 
                               <p className="mt-1 text-sm font-medium text-slate-400">
-                                {membre.role || "Aucun rôle"}
+                                {membre.role ||
+                                  "Aucun rôle"}
                               </p>
 
                               {membre.description && (
@@ -590,7 +651,9 @@ export default function AdminEquipe() {
 
                             <button
                               onClick={() =>
-                                handleDelete(membre.id)
+                                handleDelete(
+                                  membre.id
+                                )
                               }
                               className="flex items-center gap-2 rounded-xl border border-red-500/20 px-3 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500/10"
                             >
@@ -608,6 +671,104 @@ export default function AdminEquipe() {
           </section>
         </div>
 
+        {/* ACTIVITÉS UTILISATEURS */}
+        <section className="mt-8 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-xl shadow-black/10">
+          <div className="flex flex-col gap-3 border-b border-slate-800 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-400">
+                Surveillance
+              </p>
+
+              <h2 className="mt-1 flex items-center gap-2 text-lg font-bold text-white">
+                <Activity size={19} />
+                Activités des utilisateurs
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Historique global des opérations effectuées
+                dans NEXUS.
+              </p>
+            </div>
+
+            <span className="w-fit rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs font-semibold text-slate-400">
+              {activites.length} activité
+              {activites.length > 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="p-5">
+            {loadingActivites ? (
+              <div className="py-10 text-center text-sm text-slate-500">
+                Chargement des activités...
+              </div>
+            ) : activites.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-700 py-12 text-center">
+                <Activity
+                  size={30}
+                  className="mx-auto mb-3 text-slate-700"
+                />
+
+                <p className="text-sm font-medium text-slate-400">
+                  Aucune activité enregistrée
+                </p>
+              </div>
+            ) : (
+              <div className="max-h-[520px] divide-y divide-slate-800 overflow-y-auto">
+                {activites.map((activite) => (
+                  <div
+                    key={activite.id}
+                    className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400">
+                        <Activity size={18} />
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-white">
+                            {activite.action}
+                          </p>
+
+                          <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-semibold text-slate-400">
+                            {activite.module}
+                          </span>
+                        </div>
+
+                        {activite.description && (
+                          <p className="mt-1 text-sm text-slate-500">
+                            {activite.description}
+                          </p>
+                        )}
+
+                        <p className="mt-2 break-all text-xs text-slate-600">
+                          Utilisateur :{" "}
+                          {activite.user_id ||
+                            "Système"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="shrink-0 text-xs text-slate-600">
+                      {new Intl.DateTimeFormat(
+                        "fr-FR",
+                        {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        }
+                      ).format(
+                        new Date(
+                          activite.created_at
+                        )
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* MODULES */}
         <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
           <div className="mb-5">
@@ -622,7 +783,8 @@ export default function AdminEquipe() {
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {modules.map((item) => {
-              const Icon = moduleIcons[item] || Boxes;
+              const Icon =
+                moduleIcons[item] || Boxes;
 
               const count = membres.filter(
                 (membre) => membre.module === item
@@ -634,7 +796,10 @@ export default function AdminEquipe() {
                   className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-slate-700 hover:bg-slate-900"
                 >
                   <div className="mb-3 flex items-center justify-between">
-                    <Icon size={19} className="text-blue-400" />
+                    <Icon
+                      size={19}
+                      className="text-blue-400"
+                    />
 
                     <span className="text-xs font-semibold text-slate-600">
                       {count}
@@ -660,7 +825,9 @@ export default function AdminEquipe() {
 
         <div className="mt-6 flex items-center justify-between border-t border-slate-900 pt-5 text-xs text-slate-600">
           <span>NEXUS ERP · Administration</span>
-          <span>Accès réservé aux administrateurs</span>
+          <span>
+            Accès réservé aux administrateurs
+          </span>
         </div>
       </div>
     </div>

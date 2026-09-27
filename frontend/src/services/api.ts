@@ -4,19 +4,25 @@ const API_URL =
   import.meta.env.VITE_API_URL ||
   "http://localhost:3000/api";
 
-async function getHeaders() {
+async function getHeaders(
+  includeJson = false
+): Promise<Record<string, string>> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  return {
-    "Content-Type": "application/json",
-    ...(session?.access_token
-      ? {
-          Authorization: `Bearer ${session.access_token}`,
-        }
-      : {}),
-  };
+  const headers: Record<string, string> = {};
+
+  if (includeJson) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (session?.access_token) {
+    headers.Authorization =
+      `Bearer ${session.access_token}`;
+  }
+
+  return headers;
 }
 
 export const api = {
@@ -28,17 +34,13 @@ export const api = {
       }
     );
 
-    const data = await response.json();
-
     if (!response.ok) {
       throw new Error(
-        data?.message ||
-          data?.error ||
-          `Erreur API : ${response.status}`
+        `Erreur API : ${response.status}`
       );
     }
 
-    return data;
+    return response.json();
   },
 
   async post<T>(
@@ -49,7 +51,7 @@ export const api = {
       `${API_URL}${endpoint}`,
       {
         method: "POST",
-        headers: await getHeaders(),
+        headers: await getHeaders(true),
         body: JSON.stringify(body),
       }
     );
@@ -67,7 +69,35 @@ export const api = {
     return data;
   },
 
-  async delete<T>(endpoint: string): Promise<T> {
+  async put<T>(
+    endpoint: string,
+    body: unknown
+  ): Promise<T> {
+    const response = await fetch(
+      `${API_URL}${endpoint}`,
+      {
+        method: "PUT",
+        headers: await getHeaders(true),
+        body: JSON.stringify(body),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+          data?.error ||
+          `Erreur API : ${response.status}`
+      );
+    }
+
+    return data;
+  },
+
+  async delete<T>(
+    endpoint: string
+  ): Promise<T> {
     const response = await fetch(
       `${API_URL}${endpoint}`,
       {

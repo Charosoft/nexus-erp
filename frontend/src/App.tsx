@@ -20,6 +20,7 @@ import Utilisateurs from "./pages/admin/Utilisateurs";
 
 // Pages privées
 import Dashboard from "./pages/Dashboard";
+import Clients from "./pages/Clients";
 import Stock from "./pages/Stock";
 import Ventes from "./pages/Ventes";
 import Fournisseurs from "./pages/Fournisseurs";
@@ -80,7 +81,7 @@ function ProtectedLayout() {
         </header>
 
         {/* =================================================== */}
-        {/* PAGES                                               */}
+        {/* PAGES PRIVÉES                                       */}
         {/* =================================================== */}
 
         <div className="p-4 sm:p-5 md:p-8">
@@ -88,6 +89,11 @@ function ProtectedLayout() {
             <Route
               path="/dashboard"
               element={<Dashboard />}
+            />
+
+            <Route
+              path="/clients"
+              element={<Clients />}
             />
 
             <Route

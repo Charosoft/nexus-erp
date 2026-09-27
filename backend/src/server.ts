@@ -11,6 +11,7 @@ import comptabiliteRoutes from "./routes/comptabilite.routes.js";
 import fournisseursRoutes from "./routes/fournisseurs.routes.js";
 import activitesRoutes from "./routes/activites.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import clientsRoutes from "./routes/clients.routes.js";
 
 dotenv.config();
 
@@ -39,6 +40,7 @@ app.use("/api/comptabilite", comptabiliteRoutes);
 app.use("/api/fournisseurs", fournisseursRoutes);
 app.use("/api/activites", activitesRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/clients", clientsRoutes);
 
 /* Route de test API */
 

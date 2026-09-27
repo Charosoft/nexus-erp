@@ -60,6 +60,11 @@ export default function Sidebar({
       icon: LayoutDashboard,
     },
     {
+      label: "Clients",
+      to: "/clients",
+      icon: Users,
+    },
+    {
       label: "Stock & Inventaire",
       to: "/stock",
       icon: Boxes,

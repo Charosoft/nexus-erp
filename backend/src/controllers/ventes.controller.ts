@@ -1,9 +1,12 @@
 import type { Request, Response } from "express";
+
 import {
   getClients,
   getInvoices,
-  createSale
+  createSale,
 } from "../services/ventes.service.js";
+
+import { getAuthenticatedUserId } from "../utils/auth.js";
 
 export const getClientsController = async (
   _req: Request,
@@ -15,13 +18,16 @@ export const getClientsController = async (
     return res.json({
       success: true,
       data: clients,
-      message: "Clients récupérés avec succès"
+      message: "Clients récupérés avec succès",
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Impossible de récupérer les clients",
-      error: error instanceof Error ? error.message : "Erreur inconnue"
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erreur inconnue",
     });
   }
 };
@@ -36,13 +42,16 @@ export const getInvoicesController = async (
     return res.json({
       success: true,
       data: invoices,
-      message: "Factures récupérées avec succès"
+      message: "Factures récupérées avec succès",
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Impossible de récupérer les factures",
-      error: error instanceof Error ? error.message : "Erreur inconnue"
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erreur inconnue",
     });
   }
 };
@@ -52,12 +61,21 @@ export const createSaleController = async (
   res: Response
 ) => {
   try {
+    const userId = await getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentification requise.",
+      });
+    }
+
     const {
       clientId,
       productId,
       quantity,
       unitPrice,
-      treasuryAccountId
+      treasuryAccountId,
     } = req.body;
 
     if (
@@ -69,7 +87,7 @@ export const createSaleController = async (
     ) {
       return res.status(400).json({
         success: false,
-        message: "Données de vente incomplètes"
+        message: "Données de vente incomplètes",
       });
     }
 
@@ -78,7 +96,8 @@ export const createSaleController = async (
       productId,
       Number(quantity),
       Number(unitPrice),
-      treasuryAccountId
+      treasuryAccountId,
+      userId
     );
 
     return res.status(201).json(sale);
@@ -86,7 +105,10 @@ export const createSaleController = async (
     return res.status(500).json({
       success: false,
       message: "Impossible de créer la vente",
-      error: error instanceof Error ? error.message : "Erreur inconnue"
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erreur inconnue",
     });
   }
 };

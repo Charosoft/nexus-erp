@@ -6,7 +6,9 @@ export const getClients = async () => {
     .select("*")
     .order("name");
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(error.message);
+  }
 
   return data;
 };
@@ -42,7 +44,9 @@ export const getInvoices = async () => {
     `)
     .order("created_at", { ascending: false });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(error.message);
+  }
 
   return data;
 };
@@ -55,22 +59,56 @@ export const createSale = async (
   treasuryAccountId: string,
   userId?: string | null
 ) => {
-  const { data, error } = await supabase.rpc("create_sale", {
-    p_client_id: clientId,
-    p_product_id: productId,
-    p_quantity: quantity,
-    p_unit_price: unitPrice,
-    p_treasury_account_id: treasuryAccountId,
-  });
+  /*
+   * 1. Récupération du produit
+   *    avant de créer l'activité.
+   */
+  const { data: product, error: productError } =
+    await supabase
+      .from("produits")
+      .select("id, reference, name")
+      .eq("id", productId)
+      .single();
 
-  if (error) throw new Error(error.message);
+  if (productError || !product) {
+    throw new Error(
+      "Produit introuvable pour cette vente."
+    );
+  }
 
+  /*
+   * 2. Création de la vente intégrée.
+   *    On conserve exactement le RPC existant.
+   */
+  const { data, error } = await supabase.rpc(
+    "create_sale",
+    {
+      p_client_id: clientId,
+      p_product_id: productId,
+      p_quantity: quantity,
+      p_unit_price: unitPrice,
+      p_treasury_account_id:
+        treasuryAccountId,
+    }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  /*
+   * 3. Enregistrement de l'activité
+   *    avec le nom et la référence du produit.
+   */
   try {
     await supabase.from("activites").insert({
       user_id: userId ?? null,
       action: "Vente créée",
       module: "Ventes",
-      description: `Vente enregistrée : ${quantity} unité(s) du produit ${productId} pour un montant de ${unitPrice * quantity} USD.`,
+      description:
+        `Vente enregistrée : ${quantity} × ${product.name} ` +
+        `(${product.reference}) pour un montant de ` +
+        `${unitPrice * quantity} USD.`,
     });
   } catch (activityError) {
     console.error(

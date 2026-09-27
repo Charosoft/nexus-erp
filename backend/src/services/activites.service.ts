@@ -1,5 +1,9 @@
 import { supabase } from "../config/supabase.js";
 
+/* =========================================================
+   TYPES
+========================================================= */
+
 export type Activite = {
   id: string;
   user_id: string | null;
@@ -16,6 +20,10 @@ export type CreateActiviteInput = {
   description?: string | null;
 };
 
+/* =========================================================
+   CRÉER UNE ACTIVITÉ
+========================================================= */
+
 export async function createActivite(
   input: CreateActiviteInput
 ): Promise<Activite> {
@@ -25,7 +33,8 @@ export async function createActivite(
       user_id: input.user_id ?? null,
       action: input.action,
       module: input.module,
-      description: input.description ?? null,
+      description:
+        input.description ?? null,
     })
     .select("*")
     .single();
@@ -36,6 +45,10 @@ export async function createActivite(
 
   return data as Activite;
 }
+
+/* =========================================================
+   RÉCUPÉRER LES ACTIVITÉS
+========================================================= */
 
 export async function getActivites(
   userId?: string
@@ -52,7 +65,8 @@ export async function getActivites(
     query = query.eq("user_id", userId);
   }
 
-  const { data, error } = await query;
+  const { data, error } =
+    await query;
 
   if (error) {
     throw new Error(error.message);

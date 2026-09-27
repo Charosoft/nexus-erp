@@ -7,7 +7,13 @@ import {
 
 import { supabase } from "../config/supabase.js";
 
-async function getUserId(req: Request) {
+/* =========================================================
+   AUTHENTIFICATION
+========================================================= */
+
+async function getUserId(
+  req: Request
+): Promise<string | null> {
   const authorization =
     req.headers.authorization;
 
@@ -32,6 +38,70 @@ async function getUserId(req: Request) {
   return user.id;
 }
 
+/* =========================================================
+   ENRICHIR LES ACTIVITÉS
+========================================================= */
+
+async function enrichirActivites(
+  activites: Awaited<ReturnType<typeof getActivites>>
+) {
+  const userIds = [
+    ...new Set(
+      activites
+        .map((activite) => activite.user_id)
+        .filter(
+          (userId): userId is string =>
+            Boolean(userId)
+        )
+    ),
+  ];
+
+  if (userIds.length === 0) {
+    return activites.map((activite) => ({
+      ...activite,
+      user_name: "Utilisateur",
+    }));
+  }
+
+  const { data: profils, error } =
+    await supabase
+      .from("profils")
+      .select("id, nom_complet")
+      .in("id", userIds);
+
+  if (error) {
+    console.error(
+      "Erreur récupération profils :",
+      error
+    );
+
+    return activites.map((activite) => ({
+      ...activite,
+      user_name: "Utilisateur",
+    }));
+  }
+
+  const profilsMap = new Map(
+    (profils ?? []).map((profil) => [
+      profil.id,
+      profil.nom_complet,
+    ])
+  );
+
+  return activites.map((activite) => ({
+    ...activite,
+    user_name:
+      (activite.user_id
+        ? profilsMap.get(activite.user_id)
+        : null) ??
+      "Utilisateur",
+  }));
+}
+
+/* =========================================================
+   LISTE DES ACTIVITÉS UTILISATEUR
+========================================================= */
+
 export async function listActivites(
   req: Request,
   res: Response
@@ -42,16 +112,20 @@ export async function listActivites(
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Utilisateur non authentifié.",
+        message:
+          "Utilisateur non authentifié.",
       });
     }
 
     const activites =
       await getActivites(userId);
 
+    const activitesEnrichies =
+      await enrichirActivites(activites);
+
     return res.json({
       success: true,
-      data: activites,
+      data: activitesEnrichies,
     });
   } catch (error) {
     console.error(
@@ -67,6 +141,10 @@ export async function listActivites(
   }
 }
 
+/* =========================================================
+   CRÉER UNE ACTIVITÉ
+========================================================= */
+
 export async function addActivite(
   req: Request,
   res: Response
@@ -77,7 +155,8 @@ export async function addActivite(
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Utilisateur non authentifié.",
+        message:
+          "Utilisateur non authentifié.",
       });
     }
 
@@ -95,16 +174,20 @@ export async function addActivite(
       });
     }
 
-    const activite = await createActivite({
-      user_id: userId,
-      action,
-      module,
-      description,
-    });
+    const activite =
+      await createActivite({
+        user_id: userId,
+        action,
+        module,
+        description,
+      });
 
     return res.status(201).json({
       success: true,
-      data: activite,
+      data: {
+        ...activite,
+        user_name: "Utilisateur",
+      },
     });
   } catch (error) {
     console.error(

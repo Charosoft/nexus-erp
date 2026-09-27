@@ -175,3 +175,72 @@ export const deleteUser = async (req: Request, res: Response) => {
     });
   }
 };
+export async function listAllActivites(
+  req: Request,
+  res: Response
+) {
+  try {
+    const authorization = req.headers.authorization;
+
+    if (!authorization?.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentification requise.",
+      });
+    }
+
+    const token = authorization.replace("Bearer ", "");
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return res.status(401).json({
+        success: false,
+        message: "Session invalide.",
+      });
+    }
+
+    const { data: admin, error: adminError } =
+      await supabase
+        .from("equipe_admins")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+    if (adminError || !admin) {
+      return res.status(403).json({
+        success: false,
+        message: "Accès administrateur requis.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("activites")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return res.json({
+      success: true,
+      data: data ?? [],
+    });
+  } catch (error) {
+    console.error(
+      "Erreur récupération activités admin :",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Impossible de récupérer les activités.",
+    });
+  }
+}
