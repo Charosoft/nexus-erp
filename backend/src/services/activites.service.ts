@@ -37,12 +37,22 @@ export async function createActivite(
   return data as Activite;
 }
 
-export async function getActivites(): Promise<Activite[]> {
-  const { data, error } = await supabase
+export async function getActivites(
+  userId?: string
+): Promise<Activite[]> {
+  let query = supabase
     .from("activites")
     .select("*")
-    .order("created_at", { ascending: false })
+    .order("created_at", {
+      ascending: false,
+    })
     .limit(200);
+
+  if (userId) {
+    query = query.eq("user_id", userId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(error.message);

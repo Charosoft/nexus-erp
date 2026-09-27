@@ -1,15 +1,53 @@
 import type { Request, Response } from "express";
+
 import {
   createActivite,
   getActivites,
 } from "../services/activites.service.js";
 
+import { supabase } from "../config/supabase.js";
+
+async function getUserId(req: Request) {
+  const authorization =
+    req.headers.authorization;
+
+  if (!authorization?.startsWith("Bearer ")) {
+    return null;
+  }
+
+  const token = authorization.replace(
+    "Bearer ",
+    ""
+  );
+
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser(token);
+
+  if (error || !user) {
+    return null;
+  }
+
+  return user.id;
+}
+
 export async function listActivites(
-  _req: Request,
+  req: Request,
   res: Response
 ) {
   try {
-    const activites = await getActivites();
+    const userId = await getUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Utilisateur non authentifié.",
+      });
+    }
+
+    const activites =
+      await getActivites(userId);
 
     return res.json({
       success: true,
@@ -23,7 +61,8 @@ export async function listActivites(
 
     return res.status(500).json({
       success: false,
-      message: "Impossible de récupérer les activités.",
+      message:
+        "Impossible de récupérer les activités.",
     });
   }
 }
@@ -33,8 +72,16 @@ export async function addActivite(
   res: Response
 ) {
   try {
+    const userId = await getUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Utilisateur non authentifié.",
+      });
+    }
+
     const {
-      user_id,
       action,
       module,
       description,
@@ -49,7 +96,7 @@ export async function addActivite(
     }
 
     const activite = await createActivite({
-      user_id,
+      user_id: userId,
       action,
       module,
       description,
