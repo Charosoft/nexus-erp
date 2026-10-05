@@ -19,7 +19,6 @@ import Login from "./pages/Login";
 import Inscription from "./pages/Inscription";
 import Equipe from "./pages/Equipe";
 import NotFound from "./pages/NotFound";
-import Utilisateurs from "./pages/admin/Utilisateurs";
 
 // Pages privées
 import Espace from "./pages/Espace";
@@ -32,9 +31,11 @@ import Comptabilite from "./pages/Comptabilite";
 import Tresorerie from "./pages/Tresorerie";
 import Profil from "./pages/Profil";
 import Activites from "./pages/Activites";
+import ChangerMotDePasse from "./pages/ChangerMotDePasse";
 
 // Administration
 import AdminEquipe from "./pages/AdminEquipe";
+import Utilisateurs from "./pages/admin/Utilisateurs";
 
 // Layout
 import Sidebar from "./components/layout/Sidebar";
@@ -235,6 +236,93 @@ function AdminGuard({
   return <>{children}</>;
 }
 
+function PasswordChangeGuard({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [mustChangePassword, setMustChangePassword] =
+    useState<boolean | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkPasswordStatus() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          if (mounted) {
+            setMustChangePassword(false);
+          }
+          return;
+        }
+
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("profils")
+          .select("doit_changer_mot_de_passe")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (mounted) {
+          setMustChangePassword(
+            data?.doit_changer_mot_de_passe === true
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Erreur vérification changement mot de passe :",
+          error
+        );
+
+        if (mounted) {
+          setMustChangePassword(false);
+        }
+      }
+    }
+
+    checkPasswordStatus();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (mustChangePassword === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-blue-500" />
+
+          <p className="text-slate-400">
+            Vérification de votre compte...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (mustChangePassword) {
+    return (
+      <Navigate
+        to="/changer-mot-de-passe"
+        replace
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function ProtectedLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] =
     useState(false);
@@ -419,6 +507,8 @@ export default function App() {
 
   return (
     <Routes>
+      {/* ================= PUBLIC ================= */}
+
       <Route
         path="/"
         element={<Home />}
@@ -448,13 +538,33 @@ export default function App() {
         }
       />
 
+      {/* ================= CHANGEMENT MOT DE PASSE ================= */}
+
+      <Route
+        path="/changer-mot-de-passe"
+        element={
+          session ? (
+            <ChangerMotDePasse />
+          ) : (
+            <Navigate
+              to="/login"
+              replace
+            />
+          )
+        }
+      />
+
+      {/* ================= ADMIN ================= */}
+
       <Route
         path="/admin"
         element={
           session ? (
-            <AdminGuard>
-              <AdminEquipe />
-            </AdminGuard>
+            <PasswordChangeGuard>
+              <AdminGuard>
+                <AdminEquipe />
+              </AdminGuard>
+            </PasswordChangeGuard>
           ) : (
             <Navigate
               to="/login"
@@ -468,9 +578,11 @@ export default function App() {
         path="/admin/utilisateurs"
         element={
           session ? (
-            <AdminGuard>
-              <Utilisateurs />
-            </AdminGuard>
+            <PasswordChangeGuard>
+              <AdminGuard>
+                <Utilisateurs />
+              </AdminGuard>
+            </PasswordChangeGuard>
           ) : (
             <Navigate
               to="/login"
@@ -480,10 +592,16 @@ export default function App() {
         }
       />
 
+      {/* ================= UTILISATEUR CONNECTÉ ================= */}
+
       {session ? (
         <Route
           path="/*"
-          element={<ProtectedLayout />}
+          element={
+            <PasswordChangeGuard>
+              <ProtectedLayout />
+            </PasswordChangeGuard>
+          }
         />
       ) : (
         <Route

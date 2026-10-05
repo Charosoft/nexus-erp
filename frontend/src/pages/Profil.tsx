@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
+
 import {
   Camera,
   CheckCircle2,
+  Eye,
+  EyeOff,
+  KeyRound,
   Loader2,
   ShieldCheck,
   UserCircle,
@@ -21,13 +26,44 @@ type ProfilData = {
 };
 
 export default function Profil() {
-  const [profile, setProfile] = useState<ProfilData | null>(null);
-  const [modules, setModules] = useState<ModuleKey[]>([]);
+  const [profile, setProfile] =
+    useState<ProfilData | null>(null);
+
+  const [modules, setModules] =
+    useState<ModuleKey[]>([]);
+
   const [email, setEmail] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  // =========================
+  // MOT DE PASSE
+  // =========================
+
+  const [currentPassword, setCurrentPassword] =
+    useState("");
+
+  const [newPassword, setNewPassword] =
+    useState("");
+
+  const [confirmPassword, setConfirmPassword] =
+    useState("");
+
+  const [changingPassword, setChangingPassword] =
+    useState(false);
+
+  const [showCurrentPassword, setShowCurrentPassword] =
+    useState(false);
+
+  const [showNewPassword, setShowNewPassword] =
+    useState(false);
+
+  const [showConfirmPassword, setShowConfirmPassword] =
+    useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -53,7 +89,10 @@ export default function Profil() {
 
       setEmail(user.email ?? "");
 
-      const { data, error: profileError } = await supabase
+      const {
+        data,
+        error: profileError,
+      } = await supabase
         .from("profils")
         .select(
           "nom_complet, telephone, fonction, module, avatar_url"
@@ -67,7 +106,9 @@ export default function Profil() {
 
       setProfile(data);
 
-      const authorizedModules = await getMyModules();
+      const authorizedModules =
+        await getMyModules();
+
       setModules(authorizedModules);
     } catch (err) {
       setError(
@@ -80,8 +121,12 @@ export default function Profil() {
     }
   }
 
+  // =========================
+  // PHOTO DE PROFIL
+  // =========================
+
   async function handleAvatarChange(
-    event: React.ChangeEvent<HTMLInputElement>
+    event: ChangeEvent<HTMLInputElement>
   ) {
     const file = event.target.files?.[0];
 
@@ -94,7 +139,8 @@ export default function Profil() {
     setError("");
 
     try {
-      const avatarUrl = await uploadAvatar(file);
+      const avatarUrl =
+        await uploadAvatar(file);
 
       setProfile((current) =>
         current
@@ -105,7 +151,9 @@ export default function Profil() {
           : current
       );
 
-      setMessage("Photo de profil mise à jour.");
+      setMessage(
+        "Photo de profil mise à jour."
+      );
     } catch (err) {
       setError(
         err instanceof Error
@@ -118,7 +166,122 @@ export default function Profil() {
     }
   }
 
-  function getInitials(name: string | null) {
+  // =========================
+  // CHANGEMENT MOT DE PASSE
+  // =========================
+
+  async function handlePasswordChange(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    setMessage("");
+    setError("");
+
+    if (!currentPassword) {
+      setError(
+        "Veuillez saisir votre mot de passe actuel."
+      );
+      return;
+    }
+
+    if (!newPassword) {
+      setError(
+        "Veuillez saisir votre nouveau mot de passe."
+      );
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setError(
+        "Le nouveau mot de passe doit contenir au moins 8 caractères."
+      );
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError(
+        "Les deux nouveaux mots de passe ne correspondent pas."
+      );
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setError(
+        "Le nouveau mot de passe doit être différent de l'ancien."
+      );
+      return;
+    }
+
+    setChangingPassword(true);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw new Error(userError.message);
+      }
+
+      if (!user?.email) {
+        throw new Error(
+          "Impossible de récupérer votre adresse e-mail."
+        );
+      }
+
+      // Vérification de l'ancien mot de passe
+      const {
+        error: loginError,
+      } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+
+      if (loginError) {
+        throw new Error(
+          "Votre mot de passe actuel est incorrect."
+        );
+      }
+
+      // Modification du mot de passe
+      const {
+        error: updateError,
+      } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+
+      // Nettoyage
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+
+      setMessage(
+        "Votre mot de passe a été modifié avec succès."
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Impossible de modifier le mot de passe."
+      );
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
+  // =========================
+  // OUTILS
+  // =========================
+
+  function getInitials(
+    name: string | null
+  ) {
     if (!name) {
       return "U";
     }
@@ -129,16 +292,22 @@ export default function Profil() {
       .filter(Boolean);
 
     if (parts.length === 1) {
-      return parts[0].slice(0, 2).toUpperCase();
+      return parts[0]
+        .slice(0, 2)
+        .toUpperCase();
     }
 
     return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   }
 
-  function getModuleLabel(moduleKey: ModuleKey) {
+  function getModuleLabel(
+    moduleKey: ModuleKey
+  ) {
     return (
-      MODULES.find((module) => module.key === moduleKey)?.label ??
-      moduleKey
+      MODULES.find(
+        (module) =>
+          module.key === moduleKey
+      )?.label ?? moduleKey
     );
   }
 
@@ -158,7 +327,10 @@ export default function Profil() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      {/* En-tête */}
+      {/* =========================
+          EN-TÊTE
+      ========================= */}
+
       <div>
         <p className="text-sm text-blue-400">
           Mon espace
@@ -169,12 +341,15 @@ export default function Profil() {
         </h1>
 
         <p className="mt-1 text-sm text-slate-500">
-          Consultez vos informations personnelles et vos
-          autorisations.
+          Consultez vos informations personnelles,
+          vos autorisations et la sécurité de votre compte.
         </p>
       </div>
 
-      {/* Messages */}
+      {/* =========================
+          MESSAGES
+      ========================= */}
+
       {message && (
         <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
           <CheckCircle2 size={18} />
@@ -189,10 +364,14 @@ export default function Profil() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        {/* Carte identité */}
+        {/* =========================
+            CARTE IDENTITÉ
+        ========================= */}
+
         <div className="rounded-2xl border border-white/10 bg-slate-900 p-6">
           <div className="flex flex-col items-center text-center">
             {/* Avatar */}
+
             <div className="relative">
               {profile?.avatar_url ? (
                 <img
@@ -234,7 +413,8 @@ export default function Profil() {
             </div>
 
             <h2 className="mt-5 text-lg font-semibold text-white">
-              {profile?.nom_complet || "Utilisateur"}
+              {profile?.nom_complet ||
+                "Utilisateur"}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
@@ -249,9 +429,13 @@ export default function Profil() {
           </div>
         </div>
 
-        {/* Informations */}
+        {/* =========================
+            INFORMATIONS
+        ========================= */}
+
         <div className="space-y-6">
           {/* Informations personnelles */}
+
           <div className="rounded-2xl border border-white/10 bg-slate-900 p-6">
             <div className="mb-5 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400">
@@ -276,7 +460,8 @@ export default function Profil() {
                 </p>
 
                 <p className="mt-1 text-sm text-slate-200">
-                  {profile?.nom_complet || "Non renseigné"}
+                  {profile?.nom_complet ||
+                    "Non renseigné"}
                 </p>
               </div>
 
@@ -296,7 +481,8 @@ export default function Profil() {
                 </p>
 
                 <p className="mt-1 text-sm text-slate-200">
-                  {profile?.telephone || "Non renseigné"}
+                  {profile?.telephone ||
+                    "Non renseigné"}
                 </p>
               </div>
 
@@ -306,13 +492,227 @@ export default function Profil() {
                 </p>
 
                 <p className="mt-1 text-sm text-slate-200">
-                  {profile?.fonction || "Non renseignée"}
+                  {profile?.fonction ||
+                    "Non renseignée"}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Modules autorisés */}
+          {/* =========================
+              SÉCURITÉ
+          ========================= */}
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900 p-6">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400">
+                <KeyRound size={20} />
+              </div>
+
+              <div>
+                <h2 className="font-semibold text-white">
+                  Sécurité du compte
+                </h2>
+
+                <p className="text-xs text-slate-500">
+                  Modifiez votre mot de passe à tout moment.
+                </p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={handlePasswordChange}
+              className="space-y-4"
+            >
+              {/* Ancien mot de passe */}
+
+              <div>
+                <label
+                  htmlFor="current-password"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
+                  Mot de passe actuel
+                </label>
+
+                <div className="relative">
+                  <input
+                    id="current-password"
+                    type={
+                      showCurrentPassword
+                        ? "text"
+                        : "password"
+                    }
+                    value={currentPassword}
+                    onChange={(event) =>
+                      setCurrentPassword(
+                        event.target.value
+                      )
+                    }
+                    autoComplete="current-password"
+                    className="w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10"
+                    placeholder="Votre mot de passe actuel"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowCurrentPassword(
+                        (current) => !current
+                      )
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-white"
+                    aria-label={
+                      showCurrentPassword
+                        ? "Masquer le mot de passe"
+                        : "Afficher le mot de passe"
+                    }
+                  >
+                    {showCurrentPassword ? (
+                      <EyeOff size={18} />
+                    ) : (
+                      <Eye size={18} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Nouveau mot de passe */}
+
+              <div>
+                <label
+                  htmlFor="new-password"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
+                  Nouveau mot de passe
+                </label>
+
+                <div className="relative">
+                  <input
+                    id="new-password"
+                    type={
+                      showNewPassword
+                        ? "text"
+                        : "password"
+                    }
+                    value={newPassword}
+                    onChange={(event) =>
+                      setNewPassword(
+                        event.target.value
+                      )
+                    }
+                    autoComplete="new-password"
+                    className="w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10"
+                    placeholder="Minimum 8 caractères"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowNewPassword(
+                        (current) => !current
+                      )
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-white"
+                    aria-label={
+                      showNewPassword
+                        ? "Masquer le mot de passe"
+                        : "Afficher le mot de passe"
+                    }
+                  >
+                    {showNewPassword ? (
+                      <EyeOff size={18} />
+                    ) : (
+                      <Eye size={18} />
+                    )}
+                  </button>
+                </div>
+
+                <p className="mt-1.5 text-xs text-slate-600">
+                  Minimum 8 caractères.
+                </p>
+              </div>
+
+              {/* Confirmation */}
+
+              <div>
+                <label
+                  htmlFor="confirm-password"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
+                  Confirmer le nouveau mot de passe
+                </label>
+
+                <div className="relative">
+                  <input
+                    id="confirm-password"
+                    type={
+                      showConfirmPassword
+                        ? "text"
+                        : "password"
+                    }
+                    value={confirmPassword}
+                    onChange={(event) =>
+                      setConfirmPassword(
+                        event.target.value
+                      )
+                    }
+                    autoComplete="new-password"
+                    className="w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10"
+                    placeholder="Confirmez votre nouveau mot de passe"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowConfirmPassword(
+                        (current) => !current
+                      )
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-white"
+                    aria-label={
+                      showConfirmPassword
+                        ? "Masquer le mot de passe"
+                        : "Afficher le mot de passe"
+                    }
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff size={18} />
+                    ) : (
+                      <Eye size={18} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={changingPassword}
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {changingPassword ? (
+                    <>
+                      <Loader2
+                        size={17}
+                        className="animate-spin"
+                      />
+                      Modification...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound size={17} />
+                      Modifier le mot de passe
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* =========================
+              MODULES AUTORISÉS
+          ========================= */}
+
           <div className="rounded-2xl border border-white/10 bg-slate-900 p-6">
             <div className="mb-5 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
@@ -366,7 +766,6 @@ export default function Profil() {
               </div>
             )}
 
-            {/* Ancien champ conservé pour compatibilité */}
             {profile?.module && (
               <div className="mt-5 border-t border-white/10 pt-4">
                 <p className="text-xs text-slate-600">
