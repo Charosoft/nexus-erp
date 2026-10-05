@@ -1,401 +1,340 @@
+import React from "react";
+
 import {
+  Activity,
   BarChart3,
-  Boxes,
   Building2,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  LayoutDashboard,
+  Calculator,
+  CircleDollarSign,
+  Home,
   LogOut,
   Menu,
-  Receipt,
-  Settings,
+  Package,
   ShoppingCart,
+  Truck,
   UserCircle,
-  Users,
-  Wallet,
   X,
 } from "lucide-react";
 
-import { NavLink, useNavigate } from "react-router-dom";
+import {
+  NavLink,
+  useNavigate,
+} from "react-router-dom";
+
 import { supabase } from "../../lib/supabase";
-import { useEffect, useState } from "react";
+import { getMyModules } from "../../services/permissions.service";
+import { MODULES } from "../../types/permissions";
+import type { ModuleKey } from "../../types/permissions";
 
 type SidebarProps = {
-  collapsed?: boolean;
-  onToggle?: () => void;
+  collapsed: boolean;
+  onToggle: () => void;
+};
+
+const moduleIcons: Record<
+  ModuleKey,
+  React.ComponentType<{ size?: number }>
+> = {
+  dashboard: BarChart3,
+  clients: UserCircle,
+  stock: Package,
+  ventes: ShoppingCart,
+  fournisseurs: Truck,
+  comptabilite: Calculator,
+  tresorerie: CircleDollarSign,
+};
+
+const moduleRoutes: Record<ModuleKey, string> = {
+  dashboard: "/dashboard",
+  clients: "/clients",
+  stock: "/stock",
+  ventes: "/ventes",
+  fournisseurs: "/fournisseurs",
+  comptabilite: "/comptabilite",
+  tresorerie: "/tresorerie",
 };
 
 export default function Sidebar({
-  collapsed = false,
+  collapsed,
   onToggle,
 }: SidebarProps) {
   const navigate = useNavigate();
 
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [allowedModules, setAllowedModules] =
+    React.useState<ModuleKey[]>([]);
 
-  useEffect(() => {
-    const checkAdmin = async () => {
-      const { data } = await supabase.rpc("est_admin");
-      setIsAdmin(data === true);
+  const [isAdmin, setIsAdmin] =
+    React.useState(false);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function loadPermissions() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          return;
+        }
+
+        const {
+          data: adminData,
+          error: adminError,
+        } = await supabase.rpc("est_admin");
+
+        if (adminError) {
+          throw adminError;
+        }
+
+        if (adminData === true) {
+          if (mounted) {
+            setIsAdmin(true);
+            setAllowedModules(
+              MODULES.map(
+                (module) => module.key
+              )
+            );
+          }
+
+          return;
+        }
+
+        const modules =
+          await getMyModules();
+
+        if (mounted) {
+          setAllowedModules(modules);
+        }
+      } catch (error) {
+        console.error(
+          "Erreur chargement permissions Sidebar :",
+          error
+        );
+      }
+    }
+
+    loadPermissions();
+
+    return () => {
+      mounted = false;
     };
-
-    checkAdmin();
   }, []);
 
-  const handleLogout = async () => {
+  async function handleLogout() {
     await supabase.auth.signOut();
     navigate("/login");
-  };
+  }
 
-  const closeMobileMenu = () => {
-    setMobileOpen(false);
-  };
-
-  const links = [
-    {
-      label: "Tableau de bord",
-      to: "/dashboard",
-      icon: LayoutDashboard,
-    },
-    {
-      label: "Clients",
-      to: "/clients",
-      icon: Users,
-    },
-    {
-      label: "Stock & Inventaire",
-      to: "/stock",
-      icon: Boxes,
-    },
-    {
-      label: "Ventes",
-      to: "/ventes",
-      icon: ShoppingCart,
-    },
-    {
-      label: "Fournisseurs",
-      to: "/fournisseurs",
-      icon: Building2,
-    },
-    {
-      label: "Comptabilité",
-      to: "/comptabilite",
-      icon: Receipt,
-    },
-    {
-      label: "Trésorerie",
-      to: "/tresorerie",
-      icon: Wallet,
-    },
-  ];
+  const visibleModules = MODULES.filter(
+    (module) =>
+      isAdmin ||
+      allowedModules.includes(module.key)
+  );
 
   return (
     <>
-      {/* ========================================================= */}
-      {/* BOUTON BURGER MOBILE                                     */}
-      {/* ========================================================= */}
-
-      {!mobileOpen && (
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="fixed left-4 top-4 z-[60] flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-950/95 text-slate-200 shadow-xl backdrop-blur-xl transition hover:bg-slate-800 md:hidden"
-          aria-label="Ouvrir le menu"
-        >
-          <Menu size={22} />
-        </button>
-      )}
-
-      {/* ========================================================= */}
-      {/* OVERLAY MOBILE                                           */}
-      {/* ========================================================= */}
-
-      {mobileOpen && (
-        <button
-          aria-label="Fermer le menu"
-          onClick={closeMobileMenu}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] md:hidden"
-        />
-      )}
-
-      {/* ========================================================= */}
-      {/* SIDEBAR                                                   */}
-      {/* ========================================================= */}
+      {/* Bouton mobile */}
+      <button
+        onClick={onToggle}
+        className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-slate-900 text-slate-300 shadow-lg md:hidden"
+      >
+        {collapsed ? (
+          <Menu size={20} />
+        ) : (
+          <X size={20} />
+        )}
+      </button>
 
       <aside
         className={[
-          "fixed left-0 top-0 z-50 flex h-screen flex-col",
-          "border-r border-slate-800/80 bg-slate-950/95",
-          "backdrop-blur-xl transition-all duration-300",
-
-          // Desktop
-          collapsed ? "md:w-20" : "md:w-72",
-
-          // Mobile
-          "w-72",
-          mobileOpen
-            ? "translate-x-0"
-            : "-translate-x-full md:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-white/10 bg-slate-950 transition-all duration-300",
+          collapsed
+            ? "w-20"
+            : "w-72",
+          "max-md:w-72",
+          collapsed
+            ? "max-md:-translate-x-full"
+            : "max-md:translate-x-0",
         ].join(" ")}
       >
-        {/* ======================================================= */}
-        {/* LOGO                                                     */}
-        {/* ======================================================= */}
+        {/* Logo */}
+        <div className="flex h-20 items-center gap-3 border-b border-white/10 px-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600">
+            <Building2 size={21} />
+          </div>
 
-        <div
-          className={[
-            "flex h-20 items-center border-b border-slate-800/80",
-            collapsed
-              ? "md:justify-center md:px-3"
-              : "justify-between px-5",
-          ].join(" ")}
-        >
-          <button
-            onClick={() => {
-              navigate("/dashboard");
-              closeMobileMenu();
-            }}
-            className="flex items-center gap-3"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 shadow-lg shadow-blue-600/20">
-              <BarChart3 size={22} />
-            </div>
-
-            <div className="text-left">
-              <div className="text-lg font-bold tracking-tight text-white">
+          {!collapsed && (
+            <div>
+              <p className="font-bold tracking-wide text-white">
                 NEXUS
-              </div>
+              </p>
 
-              <div className="text-[10px] font-medium uppercase tracking-[0.2em] text-blue-400">
-                ERP System
-              </div>
+              <p className="text-xs text-slate-500">
+                ERP Management
+              </p>
             </div>
-          </button>
-
-          {/* Fermer sur mobile */}
-          <button
-            onClick={closeMobileMenu}
-            className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-white md:hidden"
-            aria-label="Fermer le menu"
-          >
-            <X size={20} />
-          </button>
-
-          {/* Réduire sur desktop */}
-          {!collapsed && onToggle && (
-            <button
-              onClick={onToggle}
-              className="hidden rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-white md:block"
-              title="Réduire"
-            >
-              <ChevronLeft size={18} />
-            </button>
           )}
-        </div>
 
-        {/* ======================================================= */}
-        {/* NAVIGATION                                               */}
-        {/* ======================================================= */}
-
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-5">
-          {/* GESTION */}
-
-          <div
-            className={[
-              "mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600",
-              collapsed ? "md:hidden" : "",
-            ].join(" ")}
-          >
-            Gestion
-          </div>
-
-          {links.map((link) => {
-            const Icon = link.icon;
-
-            return (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                onClick={closeMobileMenu}
-                className={({ isActive }) =>
-                  [
-                    "group flex items-center gap-3 rounded-xl px-3 py-3",
-                    "text-sm font-medium transition",
-                    isActive
-                      ? "bg-blue-600/15 text-blue-400 ring-1 ring-blue-500/20"
-                      : "text-slate-400 hover:bg-slate-800/70 hover:text-white",
-                    collapsed ? "md:justify-center" : "",
-                  ].join(" ")
-                }
-                title={collapsed ? link.label : undefined}
-              >
-                <Icon size={19} />
-
-                {!collapsed && <span>{link.label}</span>}
-              </NavLink>
-            );
-          })}
-
-          {/* ===================================================== */}
-          {/* PERSONNEL                                               */}
-          {/* ===================================================== */}
-
-          <div
-            className={[
-              "my-5 border-t border-slate-800/70",
-              collapsed ? "md:mx-2" : "",
-            ].join(" ")}
-          />
-
-          <div
-            className={[
-              "mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600",
-              collapsed ? "md:hidden" : "",
-            ].join(" ")}
-          >
-            Personnel
-          </div>
-
-          <NavLink
-            to="/profil"
-            onClick={closeMobileMenu}
-            className={({ isActive }) =>
-              [
-                "flex items-center gap-3 rounded-xl px-3 py-3",
-                "text-sm font-medium transition",
-                isActive
-                  ? "bg-blue-600/15 text-blue-400 ring-1 ring-blue-500/20"
-                  : "text-slate-400 hover:bg-slate-800/70 hover:text-white",
-                collapsed ? "md:justify-center" : "",
-              ].join(" ")
-            }
-            title={collapsed ? "Mon profil" : undefined}
-          >
-            <UserCircle size={19} />
-
-            {!collapsed && <span>Mon profil</span>}
-          </NavLink>
-
-          <NavLink
-            to="/activites"
-            onClick={closeMobileMenu}
-            className={({ isActive }) =>
-              [
-                "flex items-center gap-3 rounded-xl px-3 py-3",
-                "text-sm font-medium transition",
-                isActive
-                  ? "bg-blue-600/15 text-blue-400 ring-1 ring-blue-500/20"
-                  : "text-slate-400 hover:bg-slate-800/70 hover:text-white",
-                collapsed ? "md:justify-center" : "",
-              ].join(" ")
-            }
-            title={collapsed ? "Mes activités" : undefined}
-          >
-            <FileText size={19} />
-
-            {!collapsed && <span>Mes activités</span>}
-          </NavLink>
-
-          {/* ===================================================== */}
-          {/* ADMINISTRATION                                         */}
-          {/* ===================================================== */}
-
-          {isAdmin && (
-            <>
-              <div
-                className={[
-                  "my-5 border-t border-slate-800/70",
-                  collapsed ? "md:mx-2" : "",
-                ].join(" ")}
-              />
-
-              <div
-                className={[
-                  "mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600",
-                  collapsed ? "md:hidden" : "",
-                ].join(" ")}
-              >
-                Administration
-              </div>
-
-              <NavLink
-                to="/admin"
-                onClick={closeMobileMenu}
-                className={({ isActive }) =>
-                  [
-                    "flex items-center gap-3 rounded-xl px-3 py-3",
-                    "text-sm font-medium transition",
-                    isActive
-                      ? "bg-blue-600/15 text-blue-400 ring-1 ring-blue-500/20"
-                      : "text-slate-400 hover:bg-slate-800/70 hover:text-white",
-                    collapsed ? "md:justify-center" : "",
-                  ].join(" ")
-                }
-                title={collapsed ? "Administration" : undefined}
-              >
-                <Users size={19} />
-
-                {!collapsed && <span>Administration</span>}
-              </NavLink>
-
-              <NavLink
-                to="/admin/utilisateurs"
-                onClick={closeMobileMenu}
-                className={({ isActive }) =>
-                  [
-                    "flex items-center gap-3 rounded-xl px-3 py-3",
-                    "text-sm font-medium transition",
-                    isActive
-                      ? "bg-blue-600/15 text-blue-400 ring-1 ring-blue-500/20"
-                      : "text-slate-400 hover:bg-slate-800/70 hover:text-white",
-                    collapsed ? "md:justify-center" : "",
-                  ].join(" ")
-                }
-                title={collapsed ? "Utilisateurs" : undefined}
-              >
-                <Settings size={19} />
-
-                {!collapsed && <span>Utilisateurs</span>}
-              </NavLink>
-            </>
-          )}
-        </nav>
-
-        {/* ======================================================= */}
-        {/* DÉCONNEXION                                              */}
-        {/* ======================================================= */}
-
-        <div className="border-t border-slate-800/80 p-3">
-          <button
-            onClick={handleLogout}
-            className={[
-              "flex w-full items-center gap-3 rounded-xl px-3 py-3",
-              "text-sm font-medium text-slate-400 transition",
-              "hover:bg-red-500/10 hover:text-red-400",
-              collapsed ? "md:justify-center" : "",
-            ].join(" ")}
-            title={collapsed ? "Déconnexion" : undefined}
-          >
-            <LogOut size={19} />
-
-            {!collapsed && <span>Déconnexion</span>}
-          </button>
-        </div>
-
-        {/* ======================================================= */}
-        {/* BOUTON OUVRIR DESKTOP                                    */}
-        {/* ======================================================= */}
-
-        {collapsed && onToggle && (
           <button
             onClick={onToggle}
-            className="absolute -right-3 top-24 hidden h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-400 shadow-lg transition hover:text-white md:flex"
-            title="Ouvrir"
+            className="ml-auto hidden rounded-lg p-2 text-slate-500 hover:bg-white/5 hover:text-white md:block"
           >
-            <ChevronRight size={15} />
+            {collapsed ? (
+              <Menu size={18} />
+            ) : (
+              <X size={18} />
+            )}
           </button>
-        )}
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto px-3 py-5">
+          {!collapsed && (
+            <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-widest text-slate-600">
+              Mon espace
+            </p>
+          )}
+
+          <NavLink
+            to="/espace"
+            title="Mon espace"
+            className={({ isActive }) =>
+              [
+                "mb-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition",
+                isActive
+                  ? "bg-blue-600/15 text-blue-400"
+                  : "text-slate-400 hover:bg-white/5 hover:text-white",
+                collapsed
+                  ? "justify-center"
+                  : "",
+              ].join(" ")
+            }
+          >
+            <Home size={18} />
+
+            {!collapsed && (
+              <span>Mon espace</span>
+            )}
+          </NavLink>
+
+          {!collapsed && (
+            <div className="my-5 border-t border-white/10" />
+          )}
+
+          {!collapsed && (
+            <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-widest text-slate-600">
+              Modules
+            </p>
+          )}
+
+          <div className="space-y-1">
+            {visibleModules.map((module) => {
+              const Icon =
+                moduleIcons[module.key];
+
+              return (
+                <NavLink
+                  key={module.key}
+                  to={moduleRoutes[module.key]}
+                  title={module.label}
+                  className={({ isActive }) =>
+                    [
+                      "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition",
+                      isActive
+                        ? "bg-blue-600/15 text-blue-400"
+                        : "text-slate-400 hover:bg-white/5 hover:text-white",
+                      collapsed
+                        ? "justify-center"
+                        : "",
+                    ].join(" ")
+                  }
+                >
+                  <Icon size={18} />
+
+                  {!collapsed && (
+                    <span>{module.label}</span>
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+
+          <div className="my-5 border-t border-white/10" />
+
+          {!collapsed && (
+            <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-widest text-slate-600">
+              Personnel
+            </p>
+          )}
+
+          <div className="space-y-1">
+            <NavLink
+              to="/profil"
+              title="Mon profil"
+              className={({ isActive }) =>
+                [
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition",
+                  isActive
+                    ? "bg-blue-600/15 text-blue-400"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white",
+                  collapsed
+                    ? "justify-center"
+                    : "",
+                ].join(" ")
+              }
+            >
+              <UserCircle size={18} />
+
+              {!collapsed && (
+                <span>Mon profil</span>
+              )}
+            </NavLink>
+
+            <NavLink
+              to="/activites"
+              title="Mes activités"
+              className={({ isActive }) =>
+                [
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition",
+                  isActive
+                    ? "bg-blue-600/15 text-blue-400"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white",
+                  collapsed
+                    ? "justify-center"
+                    : "",
+                ].join(" ")
+              }
+            >
+              <Activity size={18} />
+
+              {!collapsed && (
+                <span>Mes activités</span>
+              )}
+            </NavLink>
+          </div>
+        </nav>
+
+        {/* Déconnexion */}
+        <div className="border-t border-white/10 p-4">
+          <button
+            onClick={handleLogout}
+            title="Déconnexion"
+            className={[
+              "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-red-500/10 hover:text-red-400",
+              collapsed
+                ? "justify-center"
+                : "",
+            ].join(" ")}
+          >
+            <LogOut size={18} />
+
+            {!collapsed && (
+              <span>Déconnexion</span>
+            )}
+          </button>
+        </div>
       </aside>
     </>
   );

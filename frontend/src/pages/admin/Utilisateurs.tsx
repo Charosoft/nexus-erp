@@ -1,4 +1,9 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+  type FormEvent,
+} from "react";
+
 import {
   Shield,
   ShieldOff,
@@ -18,9 +23,15 @@ import {
   Wallet,
   LockKeyhole,
   UserCheck,
+  LayoutDashboard,
+  ContactRound,
+  Settings2,
+  Check,
 } from "lucide-react";
+
 import { supabase } from "../../lib/supabase";
 import { api } from "../../services/api";
+import { MODULES, type ModuleKey } from "../../types/permissions";
 
 type Profil = {
   id: string;
@@ -35,29 +46,84 @@ type Admin = {
   user_id: string;
 };
 
-const modules = [
-  "Stock & Inventaire",
-  "Comptabilité",
-  "Fournisseurs",
-  "Ventes",
-  "Trésorerie",
-];
+type ProfilModule = {
+  user_id: string;
+  module: string;
+};
 
-const moduleIcons: Record<string, typeof Boxes> = {
-  "Stock & Inventaire": Boxes,
-  Comptabilité: Calculator,
-  Fournisseurs: Truck,
-  Ventes: ShoppingCart,
-  Trésorerie: Wallet,
+type CreateUserResponse = {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  data?: {
+    id: string;
+    email?: string | null;
+    nom_complet?: string;
+  };
+};
+
+const moduleIcons: Record<
+  ModuleKey,
+  typeof Boxes
+> = {
+  dashboard: LayoutDashboard,
+  clients: ContactRound,
+  stock: Boxes,
+  ventes: ShoppingCart,
+  fournisseurs: Truck,
+  comptabilite: Calculator,
+  tresorerie: Wallet,
+};
+
+const moduleLabels: Record<ModuleKey, string> =
+  Object.fromEntries(
+    MODULES.map((module) => [
+      module.key,
+      module.label,
+    ])
+  ) as Record<ModuleKey, string>;
+
+const legacyModuleMap: Record<
+  string,
+  ModuleKey
+> = {
+  Dashboard: "dashboard",
+  Clients: "clients",
+  "Stock & Inventaire": "stock",
+  Ventes: "ventes",
+  Fournisseurs: "fournisseurs",
+  "Fournisseurs & Achats": "fournisseurs",
+  Comptabilité: "comptabilite",
+  Trésorerie: "tresorerie",
 };
 
 export default function Utilisateurs() {
   const [users, setUsers] = useState<Profil[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [permissions, setPermissions] = useState<
+    Record<string, ModuleKey[]>
+  >({});
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [showForm, setShowForm] =
+    useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [editingUser, setEditingUser] =
+    useState<Profil | null>(null);
+
+  const [savingPermissions, setSavingPermissions] =
+    useState(false);
+
+  const [editModules, setEditModules] =
+    useState<ModuleKey[]>([]);
 
   const [form, setForm] = useState({
     nom_complet: "",
@@ -65,34 +131,139 @@ export default function Utilisateurs() {
     password: "",
     telephone: "",
     fonction: "",
-    module: "",
+    modules: [] as ModuleKey[],
     is_admin: false,
   });
 
-  const loadUsers = async (silent = false) => {
+  const loadUsers = async (
+    silent = false
+  ) => {
     if (silent) {
       setRefreshing(true);
     } else {
       setLoading(true);
     }
 
-    const [{ data: profils }, { data: equipeAdmins }] =
-      await Promise.all([
+    try {
+      const [
+        { data: profils, error: profilsError },
+        {
+          data: equipeAdmins,
+          error: adminsError,
+        },
+        {
+          data: profilModules,
+          error: permissionsError,
+        },
+      ] = await Promise.all([
         supabase
           .from("profils")
           .select("*")
-          .order("created_at", { ascending: false }),
+          .order("created_at", {
+            ascending: false,
+          }),
 
         supabase
           .from("equipe_admins")
           .select("user_id"),
+
+        supabase
+          .from("profil_modules")
+          .select("user_id, module"),
       ]);
 
-    setUsers(profils || []);
-    setAdmins(equipeAdmins || []);
+      if (profilsError) {
+        throw new Error(
+          profilsError.message
+        );
+      }
 
-    setLoading(false);
-    setRefreshing(false);
+      if (adminsError) {
+        throw new Error(
+          adminsError.message
+        );
+      }
+
+      if (permissionsError) {
+        throw new Error(
+          permissionsError.message
+        );
+      }
+
+      setUsers(profils || []);
+      setAdmins(equipeAdmins || []);
+
+      const permissionMap: Record<
+        string,
+        ModuleKey[]
+      > = {};
+
+      (profilModules || []).forEach(
+        (item: ProfilModule) => {
+          const module =
+            item.module as ModuleKey;
+
+          if (
+            !MODULES.some(
+              (allowed) =>
+                allowed.key === module
+            )
+          ) {
+            return;
+          }
+
+          if (!permissionMap[item.user_id]) {
+            permissionMap[item.user_id] =
+              [];
+          }
+
+          if (
+            !permissionMap[item.user_id].includes(
+              module
+            )
+          ) {
+            permissionMap[item.user_id].push(
+              module
+            );
+          }
+        }
+      );
+
+      /*
+       * Compatibilité avec l'ancien champ
+       * profils.module.
+       */
+      (profils || []).forEach(
+        (profil: Profil) => {
+          if (
+            !permissionMap[profil.id] &&
+            profil.module
+          ) {
+            const legacyModule =
+              legacyModuleMap[
+                profil.module
+              ];
+
+            if (legacyModule) {
+              permissionMap[profil.id] = [
+                legacyModule,
+              ];
+            }
+          }
+        }
+      );
+
+      setPermissions(permissionMap);
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Impossible de charger les utilisateurs."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -100,7 +271,21 @@ export default function Utilisateurs() {
   }, []);
 
   const isAdmin = (id: string) =>
-    admins.some((admin) => admin.user_id === id);
+    admins.some(
+      (admin) => admin.user_id === id
+    );
+
+  const getUserModules = (
+    user: Profil
+  ): ModuleKey[] => {
+    if (isAdmin(user.id)) {
+      return MODULES.map(
+        (module) => module.key
+      );
+    }
+
+    return permissions[user.id] || [];
+  };
 
   const resetForm = () => {
     setForm({
@@ -109,19 +294,49 @@ export default function Utilisateurs() {
       password: "",
       telephone: "",
       fonction: "",
-      module: "",
+      modules: [],
       is_admin: false,
     });
   };
 
+  const toggleCreateModule = (
+    module: ModuleKey
+  ) => {
+    setForm((current) => ({
+      ...current,
+      modules: current.modules.includes(
+        module
+      )
+        ? current.modules.filter(
+            (item) => item !== module
+          )
+        : [
+            ...current.modules,
+            module,
+          ],
+    }));
+  };
+
+  const toggleEditModule = (
+    module: ModuleKey
+  ) => {
+    setEditModules((current) =>
+      current.includes(module)
+        ? current.filter(
+            (item) => item !== module
+          )
+        : [...current, module]
+    );
+  };
+
   const handleCreateUser = async (
-    e: React.FormEvent
+    e: FormEvent
   ) => {
     e.preventDefault();
 
     if (
-      !form.nom_complet ||
-      !form.email ||
+      !form.nom_complet.trim() ||
+      !form.email.trim() ||
       !form.password
     ) {
       alert(
@@ -137,13 +352,83 @@ export default function Utilisateurs() {
       return;
     }
 
+    if (
+      !form.is_admin &&
+      form.modules.length === 0
+    ) {
+      alert(
+        "Sélectionnez au moins un module pour cet utilisateur."
+      );
+      return;
+    }
+
     setSaving(true);
 
     try {
-      const data = await api.post<{
-        message?: string;
-        error?: string;
-      }>("/admin/users", form);
+      /*
+       * On conserve le champ legacy `module`
+       * pour compatibilité avec l'ancien système.
+       */
+      const firstModule =
+        form.modules.length > 0
+          ? moduleLabels[
+              form.modules[0]
+            ]
+          : "";
+
+      const data =
+        await api.post<CreateUserResponse>(
+          "/admin/users",
+          {
+            nom_complet:
+              form.nom_complet.trim(),
+            email: form.email.trim(),
+            password: form.password,
+            telephone:
+              form.telephone.trim(),
+            fonction:
+              form.fonction.trim(),
+            module: firstModule,
+            is_admin: form.is_admin,
+          }
+        );
+
+      if (!data.data?.id) {
+        throw new Error(
+          "Utilisateur créé mais son identifiant est introuvable."
+        );
+      }
+
+      const userId = data.data.id;
+
+      /*
+       * Les administrateurs ont accès à tout.
+       * On ne crée donc pas de permissions
+       * spécifiques pour eux.
+       */
+      if (!form.is_admin) {
+        const rows =
+          form.modules.map(
+            (module) => ({
+              user_id: userId,
+              module,
+            })
+          );
+
+        if (rows.length > 0) {
+          const {
+            error: permissionError,
+          } = await supabase
+            .from("profil_modules")
+            .insert(rows);
+
+          if (permissionError) {
+            throw new Error(
+              `Utilisateur créé, mais impossible d'enregistrer ses permissions : ${permissionError.message}`
+            );
+          }
+        }
+      }
 
       alert(
         data.message ||
@@ -165,13 +450,130 @@ export default function Utilisateurs() {
     }
   };
 
-  const handlePromote = async (userId: string) => {
-    const { error } = await supabase.rpc(
-      "ajouter_admin",
-      {
-        p_user_id: userId,
-      }
+  const openPermissions = (
+    user: Profil
+  ) => {
+    if (isAdmin(user.id)) {
+      alert(
+        "Cet utilisateur est administrateur : il possède déjà un accès global."
+      );
+      return;
+    }
+
+    setEditingUser(user);
+    setEditModules(
+      getUserModules(user)
     );
+  };
+
+  const savePermissions = async () => {
+    if (!editingUser) {
+      return;
+    }
+
+    if (editModules.length === 0) {
+      alert(
+        "Un utilisateur doit avoir au moins un module."
+      );
+      return;
+    }
+
+    setSavingPermissions(true);
+
+    try {
+      const {
+        error: deleteError,
+      } = await supabase
+        .from("profil_modules")
+        .delete()
+        .eq(
+          "user_id",
+          editingUser.id
+        );
+
+      if (deleteError) {
+        throw new Error(
+          deleteError.message
+        );
+      }
+
+      const rows =
+        editModules.map((module) => ({
+          user_id: editingUser.id,
+          module,
+        }));
+
+      const {
+        error: insertError,
+      } = await supabase
+        .from("profil_modules")
+        .insert(rows);
+
+      if (insertError) {
+        throw new Error(
+          insertError.message
+        );
+      }
+
+      /*
+       * On conserve également le premier
+       * module dans l'ancien champ profil.module
+       * pour compatibilité.
+       */
+      const firstModule =
+        editModules[0];
+
+      const {
+        error: profileError,
+      } = await supabase
+        .from("profils")
+        .update({
+          module:
+            moduleLabels[firstModule],
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          "id",
+          editingUser.id
+        );
+
+      if (profileError) {
+        console.error(
+          "Mise à jour profil.module :",
+          profileError.message
+        );
+      }
+
+      alert(
+        "Les permissions ont été mises à jour."
+      );
+
+      setEditingUser(null);
+      setEditModules([]);
+
+      await loadUsers();
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Impossible de sauvegarder les permissions."
+      );
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
+  const handlePromote = async (
+    userId: string
+  ) => {
+    const { error } =
+      await supabase.rpc(
+        "ajouter_admin",
+        {
+          p_user_id: userId,
+        }
+      );
 
     if (error) {
       alert(
@@ -182,12 +584,16 @@ export default function Utilisateurs() {
       return;
     }
 
-    alert("Utilisateur promu administrateur.");
+    alert(
+      "Utilisateur promu administrateur."
+    );
 
     await loadUsers();
   };
 
-  const handleRemoveAdmin = async (userId: string) => {
+  const handleRemoveAdmin = async (
+    userId: string
+  ) => {
     if (admins.length <= 1) {
       alert(
         "Impossible : il doit rester au moins un administrateur."
@@ -204,12 +610,13 @@ export default function Utilisateurs() {
     }
 
     try {
-      const { error } = await supabase.rpc(
-        "retirer_admin",
-        {
-          p_user_id: userId,
-        }
-      );
+      const { error } =
+        await supabase.rpc(
+          "retirer_admin",
+          {
+            p_user_id: userId,
+          }
+        );
 
       if (error) {
         throw error;
@@ -225,7 +632,9 @@ export default function Utilisateurs() {
     }
   };
 
-  const handleDelete = async (userId: string) => {
+  const handleDelete = async (
+    userId: string
+  ) => {
     if (isAdmin(userId)) {
       alert(
         "Retirez d'abord les droits administrateur."
@@ -258,11 +667,13 @@ export default function Utilisateurs() {
     }
   };
 
-  const adminCount = admins.length;
+  const adminCount =
+    admins.length;
 
   return (
     <div className="min-h-screen bg-slate-950 p-6 text-white lg:p-8">
       <div className="mx-auto max-w-7xl">
+
         {/* HEADER */}
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -283,28 +694,35 @@ export default function Utilisateurs() {
             </div>
 
             <p className="max-w-2xl text-sm leading-6 text-slate-400">
-              Gérez les comptes utilisateurs, les profils
-              et les autorisations d'accès au système NEXUS.
+              Gérez les comptes utilisateurs,
+              les profils et les autorisations
+              d'accès au système NEXUS.
             </p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
-              onClick={() => loadUsers(true)}
+              onClick={() =>
+                loadUsers(true)
+              }
               disabled={refreshing}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw
                 size={17}
                 className={
-                  refreshing ? "animate-spin" : ""
+                  refreshing
+                    ? "animate-spin"
+                    : ""
                 }
               />
               Actualiser
             </button>
 
             <button
-              onClick={() => setShowForm(true)}
+              onClick={() =>
+                setShowForm(true)
+              }
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-950/20 transition hover:bg-blue-500"
             >
               <UserPlus size={18} />
@@ -363,14 +781,14 @@ export default function Utilisateurs() {
                 </p>
 
                 <p className="mt-1 text-lg font-bold text-emerald-400">
-                  Sécurisé
+                  Multi-modules
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* FORMULAIRE */}
+        {/* FORMULAIRE CREATION */}
         {showForm && (
           <section className="mb-8 rounded-2xl border border-blue-500/20 bg-slate-900/80 p-6 shadow-xl shadow-black/10">
             <div className="mb-6 flex items-start justify-between">
@@ -384,7 +802,8 @@ export default function Utilisateurs() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Le compte sera créé directement dans Supabase Auth.
+                  Attribuez directement un ou
+                  plusieurs modules.
                 </p>
               </div>
 
@@ -401,9 +820,12 @@ export default function Utilisateurs() {
             </div>
 
             <form
-              onSubmit={handleCreateUser}
+              onSubmit={
+                handleCreateUser
+              }
               className="grid grid-cols-1 gap-5 md:grid-cols-2"
             >
+              {/* NOM */}
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Nom complet *
@@ -418,11 +840,14 @@ export default function Utilisateurs() {
                   <input
                     type="text"
                     placeholder="Ex. Jean Kabila"
-                    value={form.nom_complet}
+                    value={
+                      form.nom_complet
+                    }
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        nom_complet: e.target.value,
+                        nom_complet:
+                          e.target.value,
                       })
                     }
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
@@ -430,6 +855,7 @@ export default function Utilisateurs() {
                 </div>
               </div>
 
+              {/* EMAIL */}
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Adresse email *
@@ -448,7 +874,8 @@ export default function Utilisateurs() {
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        email: e.target.value,
+                        email:
+                          e.target.value,
                       })
                     }
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
@@ -456,6 +883,7 @@ export default function Utilisateurs() {
                 </div>
               </div>
 
+              {/* PASSWORD */}
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Mot de passe *
@@ -474,7 +902,8 @@ export default function Utilisateurs() {
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        password: e.target.value,
+                        password:
+                          e.target.value,
                       })
                     }
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
@@ -482,6 +911,7 @@ export default function Utilisateurs() {
                 </div>
               </div>
 
+              {/* TELEPHONE */}
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Téléphone
@@ -496,11 +926,14 @@ export default function Utilisateurs() {
                   <input
                     type="text"
                     placeholder="+243..."
-                    value={form.telephone}
+                    value={
+                      form.telephone
+                    }
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        telephone: e.target.value,
+                        telephone:
+                          e.target.value,
                       })
                     }
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
@@ -508,6 +941,7 @@ export default function Utilisateurs() {
                 </div>
               </div>
 
+              {/* FONCTION */}
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Fonction
@@ -522,11 +956,14 @@ export default function Utilisateurs() {
                   <input
                     type="text"
                     placeholder="Ex. Développeur"
-                    value={form.fonction}
+                    value={
+                      form.fonction
+                    }
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        fonction: e.target.value,
+                        fonction:
+                          e.target.value,
                       })
                     }
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
@@ -534,39 +971,93 @@ export default function Utilisateurs() {
                 </div>
               </div>
 
+              {/* MODULES */}
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Module
+                  Modules autorisés
                 </label>
 
-                <select
-                  value={form.module}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      module: e.target.value,
-                    })
-                  }
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
-                >
-                  <option value="">Aucun module</option>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {MODULES.map(
+                    (module) => {
+                      const Icon =
+                        moduleIcons[
+                          module.key
+                        ];
 
-                  {modules.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
+                      const checked =
+                        form.modules.includes(
+                          module.key
+                        );
+
+                      return (
+                        <label
+                          key={
+                            module.key
+                          }
+                          className={[
+                            "flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition",
+                            checked
+                              ? "border-blue-500/40 bg-blue-500/10"
+                              : "border-slate-800 bg-slate-950 hover:border-slate-700",
+                          ].join(" ")}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={
+                              checked
+                            }
+                            onChange={() =>
+                              toggleCreateModule(
+                                module.key
+                              )
+                            }
+                            className="sr-only"
+                          />
+
+                          <div
+                            className={[
+                              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                              checked
+                                ? "bg-blue-600 text-white"
+                                : "bg-slate-800 text-slate-500",
+                            ].join(" ")}
+                          >
+                            {checked ? (
+                              <Check
+                                size={16}
+                              />
+                            ) : (
+                              <Icon
+                                size={16}
+                              />
+                            )}
+                          </div>
+
+                          <span className="text-xs font-medium text-slate-300">
+                            {
+                              module.label
+                            }
+                          </span>
+                        </label>
+                      );
+                    }
+                  )}
+                </div>
               </div>
 
+              {/* ADMIN */}
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 transition hover:border-slate-600 md:col-span-2">
                 <input
                   type="checkbox"
-                  checked={form.is_admin}
+                  checked={
+                    form.is_admin
+                  }
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      is_admin: e.target.checked,
+                      is_admin:
+                        e.target.checked,
                     })
                   }
                   className="h-5 w-5 accent-blue-600"
@@ -578,12 +1069,14 @@ export default function Utilisateurs() {
                   </p>
 
                   <p className="mt-1 text-xs text-slate-500">
-                    L'utilisateur pourra gérer les comptes et
-                    l'administration NEXUS.
+                    Un administrateur possède
+                    automatiquement un accès global
+                    à NEXUS.
                   </p>
                 </div>
               </label>
 
+              {/* ACTIONS */}
               <div className="flex flex-col-reverse gap-3 md:col-span-2 md:flex-row md:justify-end">
                 <button
                   type="button"
@@ -602,6 +1095,7 @@ export default function Utilisateurs() {
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <UserPlus size={17} />
+
                   {saving
                     ? "Création..."
                     : "Créer utilisateur"}
@@ -626,20 +1120,25 @@ export default function Utilisateurs() {
 
             <span className="w-fit rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs font-semibold text-slate-400">
               {users.length} compte
-              {users.length > 1 ? "s" : ""}
+              {users.length > 1
+                ? "s"
+                : ""}
             </span>
           </div>
 
           {loading ? (
             <div className="space-y-3 p-6">
-              {Array.from({ length: 5 }).map((_, index) => (
+              {Array.from({
+                length: 5,
+              }).map((_, index) => (
                 <div
                   key={index}
                   className="h-20 animate-pulse rounded-xl bg-slate-950"
                 />
               ))}
             </div>
-          ) : users.length === 0 ? (
+          ) : users.length ===
+            0 ? (
             <div className="p-14 text-center">
               <Users
                 size={34}
@@ -656,7 +1155,7 @@ export default function Utilisateurs() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px]">
+              <table className="w-full min-w-[1100px]">
                 <thead className="border-b border-slate-800 bg-slate-950/70">
                   <tr>
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -668,7 +1167,7 @@ export default function Utilisateurs() {
                     </th>
 
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                      Module
+                      Modules
                     </th>
 
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -682,140 +1181,239 @@ export default function Utilisateurs() {
                 </thead>
 
                 <tbody>
-                  {users.map((user) => {
-                    const admin = isAdmin(user.id);
+                  {users.map(
+                    (user) => {
+                      const admin =
+                        isAdmin(
+                          user.id
+                        );
 
-                    const ModuleIcon =
-                      user.module &&
-                      moduleIcons[user.module]
-                        ? moduleIcons[user.module]
-                        : Boxes;
+                      const userModules =
+                        getUserModules(
+                          user
+                        );
 
-                    return (
-                      <tr
-                        key={user.id}
-                        className="border-b border-slate-800/70 transition hover:bg-slate-800/30 last:border-0"
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                                admin
-                                  ? "bg-emerald-500/10 text-emerald-400"
-                                  : "bg-slate-800 text-slate-400"
-                              }`}
-                            >
-                              {admin ? (
-                                <Shield size={19} />
-                              ) : (
-                                <UserRound size={19} />
-                              )}
+                      return (
+                        <tr
+                          key={
+                            user.id
+                          }
+                          className="border-b border-slate-800/70 transition hover:bg-slate-800/30 last:border-0"
+                        >
+                          {/* UTILISATEUR */}
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                                  admin
+                                    ? "bg-emerald-500/10 text-emerald-400"
+                                    : "bg-slate-800 text-slate-400"
+                                }`}
+                              >
+                                {admin ? (
+                                  <Shield
+                                    size={
+                                      19
+                                    }
+                                  />
+                                ) : (
+                                  <UserRound
+                                    size={
+                                      19
+                                    }
+                                  />
+                                )}
+                              </div>
+
+                              <div>
+                                <p className="font-semibold text-slate-200">
+                                  {user.nom_complet ||
+                                    "Sans nom"}
+                                </p>
+
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {user.telephone ||
+                                    "Téléphone non renseigné"}
+                                </p>
+                              </div>
                             </div>
+                          </td>
 
-                            <div>
-                              <p className="font-semibold text-slate-200">
-                                {user.nom_complet ||
-                                  "Sans nom"}
-                              </p>
-
-                              <p className="mt-1 text-xs text-slate-500">
-                                {user.telephone ||
-                                  "Téléphone non renseigné"}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 text-sm text-slate-300">
-                            <BriefcaseBusiness
-                              size={15}
-                              className="text-slate-600"
-                            />
-
-                            {user.fonction || "—"}
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          {user.module ? (
-                            <div className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-xs font-medium text-slate-300">
-                              <ModuleIcon
-                                size={14}
-                                className="text-blue-400"
+                          {/* FONCTION */}
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-sm text-slate-300">
+                              <BriefcaseBusiness
+                                size={
+                                  15
+                                }
+                                className="text-slate-600"
                               />
-                              {user.module}
+
+                              {user.fonction ||
+                                "—"}
                             </div>
-                          ) : (
-                            <span className="text-sm text-slate-600">
-                              Aucun module
-                            </span>
-                          )}
-                        </td>
+                          </td>
 
-                        <td className="px-6 py-4">
-                          {admin ? (
-                            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-400">
-                              <Shield size={14} />
-                              Administrateur
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-400">
-                              <UserCheck size={14} />
-                              Utilisateur
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <div className="flex justify-end gap-2">
+                          {/* MODULES */}
+                          <td className="px-6 py-4">
                             {admin ? (
-                              <button
-                                onClick={() =>
-                                  handleRemoveAdmin(
-                                    user.id
-                                  )
-                                }
-                                className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-2.5 text-orange-400 transition hover:bg-orange-500/10"
-                                title="Retirer les droits administrateur"
-                              >
-                                <ShieldOff size={17} />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() =>
-                                  handlePromote(
-                                    user.id
-                                  )
-                                }
-                                className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-2.5 text-blue-400 transition hover:bg-blue-500/10"
-                                title="Promouvoir administrateur"
-                              >
-                                <Shield size={17} />
-                              </button>
-                            )}
+                              <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-400">
+                                <Shield
+                                  size={
+                                    14
+                                  }
+                                />
+                                Accès global
+                              </span>
+                            ) : userModules.length >
+                              0 ? (
+                              <div className="flex max-w-[430px] flex-wrap gap-1.5">
+                                {userModules.map(
+                                  (
+                                    module
+                                  ) => {
+                                    const Icon =
+                                      moduleIcons[
+                                        module
+                                      ];
 
-                            <button
-                              onClick={() =>
-                                handleDelete(user.id)
-                              }
-                              className="rounded-xl border border-red-500/20 bg-red-500/5 p-2.5 text-red-400 transition hover:bg-red-500/10"
-                              title="Supprimer l'utilisateur"
-                            >
-                              <Trash2 size={17} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                                    return (
+                                      <span
+                                        key={
+                                          module
+                                        }
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-xs font-medium text-slate-300"
+                                      >
+                                        <Icon
+                                          size={
+                                            13
+                                          }
+                                          className="text-blue-400"
+                                        />
+
+                                        {
+                                          moduleLabels[
+                                            module
+                                          ]
+                                        }
+                                      </span>
+                                    );
+                                  }
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-red-400">
+                                Aucun module
+                              </span>
+                            )}
+                          </td>
+
+                          {/* ACCES */}
+                          <td className="px-6 py-4">
+                            {admin ? (
+                              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-400">
+                                <Shield
+                                  size={
+                                    14
+                                  }
+                                />
+                                Administrateur
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-400">
+                                <UserCheck
+                                  size={
+                                    14
+                                  }
+                                />
+                                Utilisateur
+                              </span>
+                            )}
+                          </td>
+
+                          {/* ACTIONS */}
+                          <td className="px-6 py-4">
+                            <div className="flex justify-end gap-2">
+                              {!admin && (
+                                <button
+                                  onClick={() =>
+                                    openPermissions(
+                                      user
+                                    )
+                                  }
+                                  className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-2.5 text-purple-400 transition hover:bg-purple-500/10"
+                                  title="Gérer les modules"
+                                >
+                                  <Settings2
+                                    size={
+                                      17
+                                    }
+                                  />
+                                </button>
+                              )}
+
+                              {admin ? (
+                                <button
+                                  onClick={() =>
+                                    handleRemoveAdmin(
+                                      user.id
+                                    )
+                                  }
+                                  className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-2.5 text-orange-400 transition hover:bg-orange-500/10"
+                                  title="Retirer les droits administrateur"
+                                >
+                                  <ShieldOff
+                                    size={
+                                      17
+                                    }
+                                  />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() =>
+                                    handlePromote(
+                                      user.id
+                                    )
+                                  }
+                                  className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-2.5 text-blue-400 transition hover:bg-blue-500/10"
+                                  title="Promouvoir administrateur"
+                                >
+                                  <Shield
+                                    size={
+                                      17
+                                    }
+                                  />
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() =>
+                                  handleDelete(
+                                    user.id
+                                  )
+                                }
+                                className="rounded-xl border border-red-500/20 bg-red-500/5 p-2.5 text-red-400 transition hover:bg-red-500/10"
+                                title="Supprimer l'utilisateur"
+                              >
+                                <Trash2
+                                  size={
+                                    17
+                                  }
+                                />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
                 </tbody>
               </table>
             </div>
           )}
         </section>
 
-        {/* MODULES */}
+        {/* REPARTITION */}
         <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
           <div className="mb-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-blue-400">
@@ -827,44 +1425,66 @@ export default function Utilisateurs() {
             </h2>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {modules.map((item) => {
-              const Icon = moduleIcons[item];
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            {MODULES.map(
+              (module) => {
+                const Icon =
+                  moduleIcons[
+                    module.key
+                  ];
 
-              const count = users.filter(
-                (user) => user.module === item
-              ).length;
+                const count =
+                  users.filter(
+                    (user) =>
+                      !isAdmin(
+                        user.id
+                      ) &&
+                      getUserModules(
+                        user
+                      ).includes(
+                        module.key
+                      )
+                  ).length;
 
-              return (
-                <div
-                  key={item}
-                  className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-slate-700 hover:bg-slate-900"
-                >
-                  <div className="mb-3 flex items-center justify-between">
-                    <Icon
-                      size={19}
-                      className="text-blue-400"
-                    />
+                return (
+                  <div
+                    key={
+                      module.key
+                    }
+                    className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-slate-700 hover:bg-slate-900"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <Icon
+                        size={
+                          19
+                        }
+                        className="text-blue-400"
+                      />
 
-                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-semibold text-slate-400">
-                      {count}
-                    </span>
+                      <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-semibold text-slate-400">
+                        {count}
+                      </span>
+                    </div>
+
+                    <p className="text-sm font-medium text-slate-300">
+                      {module.label}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-600">
+                      {count ===
+                      0
+                        ? "Aucun utilisateur"
+                        : `${count} utilisateur${
+                            count >
+                            1
+                              ? "s"
+                              : ""
+                          }`}
+                    </p>
                   </div>
-
-                  <p className="text-sm font-medium text-slate-300">
-                    {item}
-                  </p>
-
-                  <p className="mt-1 text-xs text-slate-600">
-                    {count === 0
-                      ? "Aucun utilisateur"
-                      : `${count} utilisateur${
-                          count > 1 ? "s" : ""
-                        }`}
-                  </p>
-                </div>
-              );
-            })}
+                );
+              }
+            )}
           </div>
         </section>
 
@@ -883,12 +1503,196 @@ export default function Utilisateurs() {
 
           <span>
             {adminCount} administrateur
-            {adminCount > 1 ? "s" : ""} · {users.length}{" "}
-            utilisateur
-            {users.length > 1 ? "s" : ""}
+            {adminCount > 1
+              ? "s"
+              : ""}{" "}
+            · {users.length} utilisateur
+            {users.length > 1
+              ? "s"
+              : ""}
           </span>
         </div>
       </div>
+
+      {/* =====================================================
+          MODAL — GESTION DES PERMISSIONS
+      ===================================================== */}
+
+      {editingUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+            {/* MODAL HEADER */}
+            <div className="flex items-start justify-between border-b border-slate-800 p-6">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400">
+                    <Settings2
+                      size={21}
+                    />
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-purple-400">
+                      Permissions
+                    </p>
+
+                    <h2 className="mt-1 text-xl font-bold text-white">
+                      {editingUser.nom_complet ||
+                        "Utilisateur"}
+                    </h2>
+                  </div>
+                </div>
+
+                <p className="mt-4 text-sm text-slate-500">
+                  Cochez les modules auxquels cet
+                  utilisateur doit avoir accès.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setEditingUser(null);
+                  setEditModules([]);
+                }}
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* MODULES */}
+            <div className="grid gap-3 p-6 sm:grid-cols-2">
+              {MODULES.map(
+                (module) => {
+                  const Icon =
+                    moduleIcons[
+                      module.key
+                    ];
+
+                  const checked =
+                    editModules.includes(
+                      module.key
+                    );
+
+                  return (
+                    <label
+                      key={
+                        module.key
+                      }
+                      className={[
+                        "flex cursor-pointer items-center gap-4 rounded-xl border p-4 transition",
+                        checked
+                          ? "border-blue-500/40 bg-blue-500/10"
+                          : "border-slate-800 bg-slate-950 hover:border-slate-700",
+                      ].join(" ")}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={
+                          checked
+                        }
+                        onChange={() =>
+                          toggleEditModule(
+                            module.key
+                          )
+                        }
+                        className="sr-only"
+                      />
+
+                      <div
+                        className={[
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                          checked
+                            ? "bg-blue-600 text-white"
+                            : "bg-slate-800 text-slate-500",
+                        ].join(" ")}
+                      >
+                        {checked ? (
+                          <Check
+                            size={
+                              18
+                            }
+                          />
+                        ) : (
+                          <Icon
+                            size={
+                              18
+                            }
+                          />
+                        )}
+                      </div>
+
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-200">
+                          {
+                            module.label
+                          }
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-600">
+                          {checked
+                            ? "Accès autorisé"
+                            : "Accès refusé"}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                }
+              )}
+            </div>
+
+            {/* FOOTER MODAL */}
+            <div className="flex flex-col gap-3 border-t border-slate-800 bg-slate-950/50 p-6 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-500">
+                {editModules.length} module
+                {editModules.length >
+                1
+                  ? "s"
+                  : ""}{" "}
+                sélectionné
+                {editModules.length >
+                1
+                  ? "s"
+                  : ""}
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingUser(null);
+                    setEditModules([]);
+                  }}
+                  className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                >
+                  Annuler
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    savePermissions
+                  }
+                  disabled={
+                    savingPermissions ||
+                    editModules.length ===
+                      0
+                  }
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Check
+                    size={17}
+                  />
+
+                  {savingPermissions
+                    ? "Enregistrement..."
+                    : "Enregistrer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
