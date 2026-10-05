@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   Package,
+  Settings,
   ShoppingCart,
   Truck,
   UserCircle,
@@ -91,6 +92,7 @@ export default function Sidebar({
         if (adminData === true) {
           if (mounted) {
             setIsAdmin(true);
+
             setAllowedModules(
               MODULES.map(
                 (module) => module.key
@@ -260,6 +262,41 @@ export default function Sidebar({
               );
             })}
           </div>
+
+          {/* Administration — uniquement pour les admins */}
+          {isAdmin && (
+            <>
+              <div className="my-5 border-t border-white/10" />
+
+              {!collapsed && (
+                <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-widest text-slate-600">
+                  Administration
+                </p>
+              )}
+
+              <NavLink
+                to="/admin"
+                title="Administration"
+                className={({ isActive }) =>
+                  [
+                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition",
+                    isActive
+                      ? "bg-blue-600/15 text-blue-400"
+                      : "text-slate-400 hover:bg-white/5 hover:text-white",
+                    collapsed
+                      ? "justify-center"
+                      : "",
+                  ].join(" ")
+                }
+              >
+                <Settings size={18} />
+
+                {!collapsed && (
+                  <span>Administration</span>
+                )}
+              </NavLink>
+            </>
+          )}
 
           <div className="my-5 border-t border-white/10" />
 
